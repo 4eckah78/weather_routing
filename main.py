@@ -3,11 +3,6 @@ import PIL.ImageDraw as ImageDraw
 import PIL.Image as Image
 import math
 
-height = 480
-width = 640
-a = 15
-polygons_file = 'polygons.txt'
-
 
 def generate_polygon(x0, y0, r_range, n_range):
     r = np.random.randint(r_range[0], r_range[1])
