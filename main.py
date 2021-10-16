@@ -103,6 +103,16 @@ def read_polygons_from(filename):
     return pols
 
 
+def show_polygons(pols, save_to=None):
+    image = Image.new("1", (width, height), color=0)
+    draw = ImageDraw.Draw(image)
+    for pol in pols:
+        draw.polygon((pol), fill=1)
+    image.show()
+    if save_to:
+        image.save(save_to)
+
+
 def from_pixel_to_hex_polygons(pols):
     hex_pols = []
     for polygon in pols:
@@ -118,7 +128,7 @@ def from_pixel_to_hex_polygons(pols):
     return hex_pols
 
 
-def show_hex_image(width, height, hex_width, hex_height, a):
+def draw_hex_image(width, height, hex_width, hex_height, a, show=True, save_to=None):
     image = Image.new("1", (width, height), color=1)
     draw = ImageDraw.Draw(image)
 
@@ -131,19 +141,121 @@ def show_hex_image(width, height, hex_width, hex_height, a):
             row, col = pixel_to_flat_hex(x0, y0)
             color = 0 if hex_map[row, col // 2] == 1 else 1
             draw.regular_polygon((x0, y0, a), 6, fill=color, outline=0)
-    image.show()
+    if show:
+        image.show()
+    if save_to:
+        image.save(save_to)
+
+
+def neighbor(row, col, direction):
+    dir = doubleheight_directions[direction]
+    return row + dir[0], col + dir[1]
+
+
+def bresenham(start, end):
+    double_dx = end[0] - start[0]
+    dy = end[1] - start[1]
+    if abs(double_dx) <= abs(dy):
+        v_biased_lines(start, end, double_dx, dy)
+    else:
+        h_biased_lines(start, end, double_dx, dy)
+
+
+def h_biased_lines(start, end, double_dx, dy):
+    row, col = start
+    row1, col1 = end
+    e = 0
+    x_sign = 1 if double_dx >= 0 else -1
+    y_sign = 1 if dy >= 0 else -1
+    by = 3 * abs(dy)
+    bx = 3 * abs(double_dx)
+    while (row, col) != (row1, col1):
+        e += by
+        if e > abs(double_dx):
+            row, col = neighbor(row, col, LINE_DIRS[x_sign, y_sign])
+            e -= bx
+        else:
+            row, col = neighbor(row, col, LINE_DIRS[x_sign, 0])
+            e += by
+        hex_map[row, col // 2] = 1
+        # draw_hex_image(width, height, hex_width, hex_height, a, show=True)
+
+
+def v_biased_lines(start, end, double_dx, dy):
+    row, col = start
+    row1, col1 = end
+    e = 0
+    x_sign = 1 if double_dx >= 0 else -1
+    y_sign = 1 if dy >= 0 else -1
+    by = abs(dy)
+    bx = abs(double_dx)
+    while (row, col) != (row1, col1):
+        e += bx
+        if e > 0:
+            row, col = neighbor(row, col, LINE_DIRS[x_sign, y_sign])
+            e -= by
+        else:
+            row, col = neighbor(row, col, LINE_DIRS[-x_sign, y_sign])
+            e += by
+        hex_map[row, col // 2] = 1
+        # draw_hex_image(width, height, hex_width, hex_height, a, show=True)
+
+
+def get_image_size_by_polygons(pols):
+    width, height = 0, 0
+    for pol in pols:
+        w, h = max(pol[::2]), max(pol[1::2])
+        if w > width:
+            width = w
+        if h > height:
+            height = h
+    return width + 50, height + 50
+
+
+def draw_polygons_sides(hex_pols):
+    for pol in hex_pols:
+        for i in range(len(pol) - 1):
+            bresenham(pol[i], pol[i + 1])
 
 
 if __name__ == "__main__":
+    a = 5
+    polygons_file = 'polygons.txt'
+
+    doubleheight_directions = {
+        "UP": [-2, 0],
+        "DOWN": [2, 0],
+        "DOWN_LEFT": [1, -1],
+        "UP_LEFT": [-1, -1],
+        "UP_RIGHT": [-1, 1],
+        "DOWN_RIGHT": [1, 1]
+    }
+
+    LINE_DIRS = {
+        (1, 1): "DOWN_RIGHT",
+        (1, 0): "DOWN",
+        (1, -1): "DOWN_LEFT",
+        (-1, 0): "UP",
+        (-1, 1): "UP_RIGHT",
+        (-1, -1): "UP_LEFT"
+
+    }
+
+    polygons = read_polygons_from(polygons_file)
+
+    width, height = get_image_size_by_polygons(polygons)
+
+    # show_polygons(polygons)
+
     hex_width = math.ceil(width / (3 * a))
     hex_height = math.ceil(height / (np.sqrt(3) * a)) * 2 + 1
     hex_map = np.zeros((hex_height, hex_width), dtype=np.uint8)
 
-    polygons = read_polygons_from(polygons_file)
-
     hex_polygons = from_pixel_to_hex_polygons(polygons)
 
-    show_hex_image(width, height, hex_width, hex_height, a)
+    draw_polygons_sides(hex_polygons)
+
+    draw_hex_image(width, height, hex_width, hex_height, a, show=True)
 
     # generate_N_polygons(10, [10, 100], [3, 6])
     # on average 3 heptagon (polygon with 7 sides) per 100,000 cases
