@@ -234,7 +234,6 @@ def draw_hex_polygons(hex_pols):
         fill_pol(pol_sides_list)
 
 
-
 if __name__ == "__main__":
     a = 5
     polygons_file = 'polygons.txt'
