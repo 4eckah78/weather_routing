@@ -123,7 +123,7 @@ def from_pixel_to_hex_polygons(pols):
     return hex_pols
 
 
-def draw_hex_image(width, height, hex_width, hex_height, a, show=True, save_to=None):
+def draw_hex_image(width, height, hex_width, hex_height, a, show=True, save_to=None, draw_rect=False):
     image = Image.new("1", (width, height), color=1)
     draw = ImageDraw.Draw(image)
 
@@ -136,6 +136,9 @@ def draw_hex_image(width, height, hex_width, hex_height, a, show=True, save_to=N
             row, col = pixel_to_flat_hex(x0, y0)
             color = 0 if hex_map[row, col // 2] == 1 else 1
             draw.regular_polygon((x0, y0, a), 6, fill=color, outline=0)
+    if draw_rect:
+        for pol in polygons:
+            draw.polygon((pol), outline=1)
     if show:
         image.show()
     if save_to:
@@ -147,16 +150,16 @@ def neighbor(row, col, direction):
     return row + dir[0], col + dir[1]
 
 
-def bresenham(start, end):
+def bresenham(start, end, pol_sides_list):
     double_dx = end[0] - start[0]
     dy = end[1] - start[1]
     if abs(double_dx) <= abs(dy):
-        v_biased_lines(start, end, double_dx, dy)
+        return v_biased_lines(start, end, double_dx, dy, pol_sides_list)
     else:
-        h_biased_lines(start, end, double_dx, dy)
+        return h_biased_lines(start, end, double_dx, dy, pol_sides_list)
 
 
-def h_biased_lines(start, end, double_dx, dy):
+def h_biased_lines(start, end, double_dx, dy, pol_sides_list):
     row, col = start
     row1, col1 = end
     e = 0
@@ -173,10 +176,13 @@ def h_biased_lines(start, end, double_dx, dy):
             row, col = neighbor(row, col, LINE_DIRS[x_sign, 0])
             e += by
         hex_map[row, col // 2] = 1
-        # draw_hex_image(width, height, hex_width, hex_height, a, show=True)
+        if row + col in pol_sides_list:
+            pol_sides_list[row + col].append([row, col])
+        else:
+            pol_sides_list[row + col] = [[row, col]]
 
 
-def v_biased_lines(start, end, double_dx, dy):
+def v_biased_lines(start, end, double_dx, dy, pol_sides_list):
     row, col = start
     row1, col1 = end
     e = 0
@@ -193,7 +199,10 @@ def v_biased_lines(start, end, double_dx, dy):
             row, col = neighbor(row, col, LINE_DIRS[-x_sign, y_sign])
             e += by
         hex_map[row, col // 2] = 1
-        # draw_hex_image(width, height, hex_width, hex_height, a, show=True)
+        if row + col in pol_sides_list:
+            pol_sides_list[row + col].append([row, col])
+        else:
+            pol_sides_list[row + col] = [[row, col]]
 
 
 def get_image_size_by_polygons(pols):
@@ -204,13 +213,26 @@ def get_image_size_by_polygons(pols):
             width = w
         if h > height:
             height = h
-    return width + 50, height + 50
+    return width + 2 * a, height + 2 * a
 
 
-def draw_polygons_sides(hex_pols):
+def fill_pol(pol_sides_list):
+    for summ, hexes in pol_sides_list.items():
+        start_hex = min(hexes, key=lambda h: h[0])
+        end_hex = max(hexes, key=lambda h: h[0])
+        row, col = start_hex
+        while [row, col] != end_hex:
+            hex_map[row, col // 2] = 1
+            row, col = neighbor(row, col, "DOWN_LEFT")
+
+
+def draw_hex_polygons(hex_pols):
     for pol in hex_pols:
+        pol_sides_list = {}
         for i in range(len(pol) - 1):
-            bresenham(pol[i], pol[i + 1])
+            bresenham(pol[i], pol[i + 1], pol_sides_list)
+        fill_pol(pol_sides_list)
+
 
 
 if __name__ == "__main__":
@@ -248,7 +270,7 @@ if __name__ == "__main__":
 
     hex_polygons = from_pixel_to_hex_polygons(polygons)
 
-    draw_polygons_sides(hex_polygons)
+    draw_hex_polygons(hex_polygons)
 
     draw_hex_image(width, height, hex_width, hex_height, a, show=True)
 
