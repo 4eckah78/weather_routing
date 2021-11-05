@@ -29,22 +29,27 @@ def generate_polygon(x0, y0, r_range, n_range):
     return np.asarray(x), np.asarray(y)
 
 
-def generate_N_polygons(N, r_range, sides_range):
-    np.random.seed(1)
+def generate_N_polygons(N, r_range, sides_range, show=False, save_to=None):
+    # np.random.seed(1)
     sides_range[1] += 2
     image = Image.new("1", (width, height), color=0)
     draw = ImageDraw.Draw(image)
 
-    with open("polygons.txt", 'w') as output_file:
-        for _ in range(N):
-            x0 = int(np.random.rand() * width)
-            y0 = int(np.random.rand() * height)
-            x, y = generate_polygon(x0, y0, r_range, sides_range)
-            points = list(zip(x, y))
-            draw.polygon((points), fill=1)
-            points = ",".join([str(x) + "," + str(y) for x, y in zip(x, y)])
-            output_file.write(points + '\n')
-    image.show()
+    pols = []
+    for _ in range(N):
+        x0 = int(np.random.rand() * width)
+        y0 = int(np.random.rand() * height)
+        x, y = generate_polygon(x0, y0, r_range, sides_range)
+        points = list(zip(x, y))
+        draw.polygon((points), fill=1)
+        points = ",".join([str(x) + "," + str(y) for x, y in zip(x, y)])
+        pols.append(points + '\n')
+    if show:
+        image.show()
+    if save_to:
+        with open(save_to, 'w') as output_file:
+            for pol in pols:
+                output_file.write(pol)
 
 
 def pixel_to_flat_hex(x, y):
@@ -123,31 +128,18 @@ def from_pixel_to_hex_polygons(pols):
     return hex_pols
 
 
-def draw_hex_image(width, height, hex_width, hex_height, a, show=True, save_to=None, draw_rect=False):
-    image = Image.new("1", (width, height), color=1)
-    draw = ImageDraw.Draw(image)
-
-    for j in range(hex_height):
-        for i in range(hex_width):
-            x0 = 3 * a * i
-            if j % 2 != 0:
-                x0 = 3 * a * (2 * i + 1) / 2
-            y0 = j * np.sqrt(3) * a / 2
-            row, col = pixel_to_flat_hex(x0, y0)
-            color = 0 if hex_map[row, col // 2] == 1 else 1
-            draw.regular_polygon((x0, y0, a), 6, fill=color, outline=0)
-    if draw_rect:
-        for pol in polygons:
-            draw.polygon((pol), outline=1)
-    if show:
-        image.show()
-    if save_to:
-        image.save(save_to)
-
-
 def neighbor(row, col, direction):
     dir = doubleheight_directions[direction]
     return row + dir[0], col + dir[1]
+
+
+def get_all_neighbors(row, col):
+    neighbors = []
+    for dir in directions:
+        row1, col1 = neighbor(row, col, dir)
+        if 0 <= row1 < len(hex_map) and 0 <= col1 // 2 < len(hex_map[0]):
+            neighbors.append((row1, col1))
+    return neighbors
 
 
 def bresenham(start, end, pol_sides_list):
@@ -226,7 +218,7 @@ def fill_pol(pol_sides_list):
             row, col = neighbor(row, col, "DOWN_LEFT")
 
 
-def draw_hex_polygons(hex_pols):
+def raster_hex_polygons(hex_pols):
     for pol in hex_pols:
         pol_sides_list = {}
         for i in range(len(pol) - 1):
@@ -234,8 +226,67 @@ def draw_hex_polygons(hex_pols):
         fill_pol(pol_sides_list)
 
 
+def draw_hex_image(save_to=None, show_in_rect=False):
+    image = Image.new("RGB", (width, height), color=(255, 255, 255))
+    draw = ImageDraw.Draw(image)
+
+    for j in range(hex_height):
+        for i in range(hex_width):
+            x0 = 3 * a * i
+            if j % 2 != 0:
+                x0 = 3 * a * (2 * i + 1) / 2
+            y0 = j * np.sqrt(3) * a / 2
+            row, col = pixel_to_flat_hex(x0, y0)
+            color = (255, 255, 255)
+            num = hex_map[row, col // 2]
+            if num == 1:
+                color = (0, 0, 0)
+            elif num > 1 or num == -1:
+                color = "red" if num == -1 else colors[(num // distance) % len(colors)]
+            draw.regular_polygon((x0, y0, a), 6, fill=color, outline=(0, 0, 0))
+    if show_in_rect:
+        for pol in polygons:
+            draw.polygon((pol), outline=(255, 255, 255))
+    image.show()
+    if save_to:
+        image.save(save_to)
+
+
+def move(visited, fringes, t):
+    for _ in range(distance):
+        fringes.append([])
+        for hex in fringes[-2]:
+            for row, col in get_all_neighbors(hex[0], hex[1]):
+                if (row, col) not in visited and hex_map[row, col // 2] != 1:
+                    if (row, col // 2) == end:
+                        fringes.pop()
+                        move_back(t - 1, (row, col))
+                        return visited, t, True
+                    visited.add((row, col))
+                    hex_map[row, col // 2] = t
+                    fringes[-1].append((row, col))
+        t += 1
+    return visited, t, False
+
+
+def move_back(t, end_hex):
+    to_visit = [end_hex]
+    next_to_visit = []
+    while to_visit:
+
+        curr = to_visit.pop()
+        for row, col in get_all_neighbors(curr[0], curr[1]):
+            if hex_map[row, col // 2] == t:
+                hex_map[row, col // 2] = -1
+                next_to_visit.append((row, col))
+        if not to_visit:
+            to_visit = next_to_visit
+            next_to_visit = []
+            t -= 1
+
+
 if __name__ == "__main__":
-    a = 5
+    a = 3
     polygons_file = 'polygons.txt'
 
     doubleheight_directions = {
@@ -246,6 +297,8 @@ if __name__ == "__main__":
         "UP_RIGHT": [-1, 1],
         "DOWN_RIGHT": [1, 1]
     }
+
+    directions = ("UP", "DOWN", "DOWN_LEFT", "UP_LEFT", "UP_RIGHT", "DOWN_RIGHT")
 
     LINE_DIRS = {
         (1, 1): "DOWN_RIGHT",
@@ -265,14 +318,33 @@ if __name__ == "__main__":
 
     hex_width = math.ceil(width / (3 * a))
     hex_height = math.ceil(height / (np.sqrt(3) * a)) * 2 + 1
-    hex_map = np.zeros((hex_height, hex_width), dtype=np.uint8)
+    hex_map = np.zeros((hex_height, hex_width), dtype=np.int32)
 
     hex_polygons = from_pixel_to_hex_polygons(polygons)
 
-    draw_hex_polygons(hex_polygons)
+    raster_hex_polygons(hex_polygons)
 
-    draw_hex_image(width, height, hex_width, hex_height, a, show=True)
+    # import time
+    # start = time.time()
+    start = (0, 0)
+    visited = {start}
+    # 118 28
+    to = (1, 1)
+    end = (len(hex_map) - to[0], len(hex_map[0]) - to[1])
+    fringes = [[(0, 0)]]
+    t = 3
+    colors = ["yellow", "purple", "green", "pink", "gray", "blue", "lemonchiffon", "lime", "orange", "salmon",
+              "silver", "teal", "violet", "wheat", "yellowgreen"]
+    hex_map[start] = 2
+    hex_map[end] = -1
+    finished = False
+    distance = 10
+    while not finished:
+        visited, t, finished = move(visited, fringes, t)
+    draw_hex_image(save_to="new.png")
+    print(t)
 
-    # generate_N_polygons(10, [10, 100], [3, 6])
+    # for i in range(10, 15):
+    #     generate_N_polygons(i, [10, 100], [3, 6], show=True, save_to=f'polygons_sample{i - 9}.txt')
     # on average 3 heptagon (polygon with 7 sides) per 100,000 cases
     # example: {5: 139255, 4: 604638, 3: 251899, 6: 4204, 7: 4} (sides_range = [3, 6]
