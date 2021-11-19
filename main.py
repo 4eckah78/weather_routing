@@ -2,6 +2,7 @@ import numpy as np
 import PIL.ImageDraw as ImageDraw
 import PIL.Image as Image
 import math
+import copy
 
 
 def generate_polygon(x0, y0, r_range, n_range):
@@ -113,19 +114,19 @@ def show_polygons(pols, save_to=None):
         image.save(save_to)
 
 
-def from_pixel_to_hex_polygons(pols):
+def from_pixel_to_hex_polygons(pols, map):
     hex_pols = []
     for polygon in pols:
         hex_pol = []
         for i in range(0, len(polygon), 2):
             row, col = pixel_to_flat_hex(polygon[i], polygon[i + 1])
-            hex_map[row, col // 2] = 1
+            map[row, col // 2] = 1
             hex_pol.append([row, col])
             # x, y = doubleheight_to_pixel(row, col)
             # print(int(polygon[i]), int(polygon[i + 1]), " --> ", row, col)
             # print(row, col, " --> ", x, y)
         hex_pols.append(hex_pol)
-    return hex_pols
+    return hex_pols, map
 
 
 def neighbor(row, col, direction):
@@ -133,25 +134,25 @@ def neighbor(row, col, direction):
     return row + dir[0], col + dir[1]
 
 
-def get_all_neighbors(row, col):
+def get_all_neighbors(row, col, map):
     neighbors = []
     for dir in directions:
         row1, col1 = neighbor(row, col, dir)
-        if 0 <= row1 < len(hex_map) and 0 <= col1 // 2 < len(hex_map[0]):
+        if 0 <= row1 < len(map) and 0 <= col1 // 2 < len(map[0]):
             neighbors.append((row1, col1))
     return neighbors
 
 
-def bresenham(start, end, pol_sides_list):
+def bresenham(start, end, pol_sides_list, map):
     double_dx = end[0] - start[0]
     dy = end[1] - start[1]
     if abs(double_dx) <= abs(dy):
-        return v_biased_lines(start, end, double_dx, dy, pol_sides_list)
+        return v_biased_lines(start, end, double_dx, dy, pol_sides_list, map)
     else:
-        return h_biased_lines(start, end, double_dx, dy, pol_sides_list)
+        return h_biased_lines(start, end, double_dx, dy, pol_sides_list, map)
 
 
-def h_biased_lines(start, end, double_dx, dy, pol_sides_list):
+def h_biased_lines(start, end, double_dx, dy, pol_sides_list, map):
     row, col = start
     row1, col1 = end
     e = 0
@@ -167,14 +168,15 @@ def h_biased_lines(start, end, double_dx, dy, pol_sides_list):
         else:
             row, col = neighbor(row, col, LINE_DIRS[x_sign, 0])
             e += by
-        hex_map[row, col // 2] = 1
+        map[row, col // 2] = 1
         if row + col in pol_sides_list:
             pol_sides_list[row + col].append([row, col])
         else:
             pol_sides_list[row + col] = [[row, col]]
+    return map
 
 
-def v_biased_lines(start, end, double_dx, dy, pol_sides_list):
+def v_biased_lines(start, end, double_dx, dy, pol_sides_list, map):
     row, col = start
     row1, col1 = end
     e = 0
@@ -190,11 +192,12 @@ def v_biased_lines(start, end, double_dx, dy, pol_sides_list):
         else:
             row, col = neighbor(row, col, LINE_DIRS[-x_sign, y_sign])
             e += by
-        hex_map[row, col // 2] = 1
+        map[row, col // 2] = 1
         if row + col in pol_sides_list:
             pol_sides_list[row + col].append([row, col])
         else:
             pol_sides_list[row + col] = [[row, col]]
+    return map
 
 
 def get_image_size_by_polygons(pols):
@@ -208,25 +211,27 @@ def get_image_size_by_polygons(pols):
     return width + 2 * a, height + 2 * a
 
 
-def fill_pol(pol_sides_list):
+def fill_pol(pol_sides_list, map):
     for summ, hexes in pol_sides_list.items():
         start_hex = min(hexes, key=lambda h: h[0])
         end_hex = max(hexes, key=lambda h: h[0])
         row, col = start_hex
         while [row, col] != end_hex:
-            hex_map[row, col // 2] = 1
+            map[row, col // 2] = 1
             row, col = neighbor(row, col, "DOWN_LEFT")
+    return map
 
 
-def raster_hex_polygons(hex_pols):
+def raster_hex_polygons(hex_pols, map):
     for pol in hex_pols:
         pol_sides_list = {}
         for i in range(len(pol) - 1):
-            bresenham(pol[i], pol[i + 1], pol_sides_list)
-        fill_pol(pol_sides_list)
+            map = bresenham(pol[i], pol[i + 1], pol_sides_list, map)
+        map = fill_pol(pol_sides_list, map)
+    return map
 
 
-def draw_hex_image(save_to=None, show_in_rect=False):
+def draw_hex_image(need_to_draw, colour, save_to=None, show_in_rect=False):
     image = Image.new("RGB", (width, height), color=(255, 255, 255))
     draw = ImageDraw.Draw(image)
 
@@ -238,11 +243,13 @@ def draw_hex_image(save_to=None, show_in_rect=False):
             y0 = j * np.sqrt(3) * a / 2
             row, col = pixel_to_flat_hex(x0, y0)
             color = (255, 255, 255)
-            num = hex_map[row, col // 2]
+            num = dynamic_hex_map[row, col // 2]
+            if (row, col) in need_to_draw:
+                color = colour
             if num == 1:
                 color = (0, 0, 0)
-            elif num > 1 or num == -1:
-                color = "red" if num == -1 else colors[(num // distance) % len(colors)]
+            if (row, col) in need_to_draw and num == 1:
+                color = colour
             draw.regular_polygon((x0, y0, a), 6, fill=color, outline=(0, 0, 0))
     if show_in_rect:
         for pol in polygons:
@@ -252,41 +259,48 @@ def draw_hex_image(save_to=None, show_in_rect=False):
         image.save(save_to)
 
 
-def move(visited, fringes, t):
+def move(last_visited):
+    to_check = set.union(*last_visited)
+    layers = []
     for _ in range(distance):
-        fringes.append([])
-        for hex in fringes[-2]:
-            for row, col in get_all_neighbors(hex[0], hex[1]):
-                if (row, col) not in visited and hex_map[row, col // 2] != 1:
-                    if (row, col // 2) == end:
-                        fringes.pop()
-                        move_back(t - 1, (row, col))
-                        return visited, t, True
-                    visited.add((row, col))
-                    hex_map[row, col // 2] = t
-                    fringes[-1].append((row, col))
-        t += 1
-    return visited, t, False
+        new_visited = set()
+        while to_check:
+            row, col = to_check.pop()
+            if dynamic_hex_map[row, col // 2] != 1 :
+                new_visited.add((row, col))
+            for row, col in get_all_neighbors(row, col, dynamic_hex_map):
+                if dynamic_hex_map[row, col // 2] != 1:
+                    if (row, col) == end:
+                        return layers, True
+                    new_visited.add((row, col))
+        layers.append(new_visited)
+        to_check = copy.copy(new_visited)
+    return layers, False
 
 
-def move_back(t, end_hex):
-    to_visit = [end_hex]
-    next_to_visit = []
-    while to_visit:
+def move_back():
+    paths = [set([end])]
+    t = time
+    while start not in paths[-1]:
+        next_layer = set()
+        for visited_in_step_t in visited_in_one_step[t][::-1]:
+            for row, col in paths[-1]:
+                neighbors = set(get_all_neighbors(row, col, dynamic_hex_map))
+                next_layer = next_layer.union(set.intersection(neighbors, visited_in_step_t))
+            paths.append(next_layer)
+        t -= 1
+    return paths
 
-        curr = to_visit.pop()
-        for row, col in get_all_neighbors(curr[0], curr[1]):
-            if hex_map[row, col // 2] == t:
-                hex_map[row, col // 2] = -1
-                next_to_visit.append((row, col))
-        if not to_visit:
-            to_visit = next_to_visit
-            next_to_visit = []
-            t -= 1
+
+def update_map(file, map):
+    polygons = read_polygons_from(file)
+    hex_polygons, map = from_pixel_to_hex_polygons(polygons, map)
+    map = raster_hex_polygons(hex_polygons, map)
+    return map
 
 
 if __name__ == "__main__":
-    a = 3
+    a = 20
     polygons_file = 'polygons.txt'
 
     doubleheight_directions = {
@@ -307,44 +321,64 @@ if __name__ == "__main__":
         (-1, 0): "UP",
         (-1, 1): "UP_RIGHT",
         (-1, -1): "UP_LEFT"
-
     }
 
     polygons = read_polygons_from(polygons_file)
 
     width, height = get_image_size_by_polygons(polygons)
+    # width, height = 640, 480
 
     # show_polygons(polygons)
 
     hex_width = math.ceil(width / (3 * a))
     hex_height = math.ceil(height / (np.sqrt(3) * a)) * 2 + 1
-    hex_map = np.zeros((hex_height, hex_width), dtype=np.int32)
+    static_hex_map = np.zeros((hex_height, hex_width), dtype=np.int32)
 
-    hex_polygons = from_pixel_to_hex_polygons(polygons)
+    hex_polygons, static_hex_map = from_pixel_to_hex_polygons(polygons, static_hex_map)
 
-    raster_hex_polygons(hex_polygons)
+    static_hex_map = raster_hex_polygons(hex_polygons, static_hex_map)
 
-    # import time
-    # start = time.time()
     start = (0, 0)
-    visited = {start}
-    # 118 28
-    to = (1, 1)
-    end = (len(hex_map) - to[0], len(hex_map[0]) - to[1])
-    fringes = [[(0, 0)]]
-    t = 3
-    colors = ["yellow", "purple", "green", "pink", "gray", "blue", "lemonchiffon", "lime", "orange", "salmon",
-              "silver", "teal", "violet", "wheat", "yellowgreen"]
-    hex_map[start] = 2
-    hex_map[end] = -1
+    visited_in_one_step = {0: [{start}]}
+    end_row = len(static_hex_map) - 2
+    end_col = (len(static_hex_map[0]) - 1)*2 + (1 if end_row % 2 != 0 else 0)
+    end = (end_row, end_col)
+    colors = ["yellow", "purple", "green", "pink", "gray", "blue", "lime", "orange", "salmon",
+              "silver", "teal", "violet", "wheat"]
+    distance = 6
+    max_steps = static_hex_map.shape[0] * static_hex_map.shape[1]
+    time = 0
     finished = False
-    distance = 10
-    while not finished:
-        visited, t, finished = move(visited, fringes, t)
-    draw_hex_image(save_to="new.png")
-    print(t)
+    dynamic_hex_map = np.copy(static_hex_map)
+    broadcast = 0
+    colour = 0
+    while not finished and time < max_steps:
+        visited, finished = move(visited_in_one_step[time])
+        time += 1
+        visited_in_one_step[time] = visited
+        if finished:
+            paths = move_back()
+            to_color = set.union(*paths)
+            draw_hex_image(to_color, "red")#, save_to=f"pictures/broadcast{8}.png")
+        else:
+            to_color = set.union(*visited)
+            # draw_hex_image(to_color, colors[colour % len(colors)])
+        colour += 1
+        if broadcast < 6:
+            dynamic_hex_map = np.copy(static_hex_map)
+            dynamic_hex_map = update_map(f"txt/broadcast{broadcast}.txt", dynamic_hex_map)
+            broadcast += 1
+        if time >= max_steps:
+            print("number of steps exceeded max_steps")
 
-    # for i in range(10, 15):
-    #     generate_N_polygons(i, [10, 100], [3, 6], show=True, save_to=f'polygons_sample{i - 9}.txt')
-    # on average 3 heptagon (polygon with 7 sides) per 100,000 cases
-    # example: {5: 139255, 4: 604638, 3: 251899, 6: 4204, 7: 4} (sides_range = [3, 6]
+    broadcast = 0
+    dynamic_hex_map = np.copy(static_hex_map)
+    to_color = set()
+    for layer in paths[::-distance]:
+        to_color = set.union(to_color, layer)
+        # to_color = set.intersection(paths, visited_in_step_t)
+        draw_hex_image(to_color, "red")#, save_to=f"pictures/broadcast{broadcast}.png")
+        if broadcast < 6:
+            dynamic_hex_map = np.copy(static_hex_map)
+            dynamic_hex_map = update_map(f"txt/broadcast{broadcast}.txt", dynamic_hex_map)
+            broadcast += 1
