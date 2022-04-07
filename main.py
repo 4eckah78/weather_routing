@@ -104,7 +104,7 @@ def read_polygons_from(filename):
     return pols
 
 
-def show_polygons(pols, save_to=None):
+def show_polygons(pols, width, height, save_to=None):
     image = Image.new("1", (width, height), color=0)
     draw = ImageDraw.Draw(image)
     for pol in pols:
@@ -231,8 +231,8 @@ def raster_hex_polygons(hex_pols, map):
     return map
 
 
-def draw_hex_image(need_to_draw, colour, save_to=None):
-    image = Image.new("RGB", (width, height), color=(255, 255, 255))
+def draw_hex_image(need_to_draw, colour, width, height, hex_width, hex_height, dynamic_hex_map, polygons=None, save_to=None):
+    image = Image.new("RGB", (width + scale_down_right_corner, height + scale_down_right_corner), color=(255, 255, 255))
     draw = ImageDraw.Draw(image)
 
     for j in range(hex_height):
@@ -252,14 +252,18 @@ def draw_hex_image(need_to_draw, colour, save_to=None):
                 color = "darkred"
             draw.regular_polygon((x0, y0, a), 6, fill=color, outline=(0, 0, 0))
     if SHOW_SQUARE_AND_HEX_RASTER:
-        for pol in polygons:
-            draw.polygon((pol), outline=(255, 255, 255))
-    image.show()
+        if not polygons:
+            print("No polygons in draw_hex_image arguments!")
+        else:
+            for pol in polygons:
+                draw.polygon((pol), outline=(255, 0, 0))
+    if SHOW:
+        image.show()
     if save_to:
         image.save(save_to)
 
 
-def move():
+def move(visited, dynamic_hex_map, end):
     for _ in range(distance):
         to_check = copy.copy(visited[-1])
         new_visited = set()
@@ -276,7 +280,7 @@ def move():
     return False
 
 
-def move_back(visited):
+def move_back(visited, end, dynamic_hex_map):
     paths = [set([end])]
     i = 0
     for curr_layer in visited[::-1]:
@@ -296,35 +300,39 @@ def update_map(file, map):
     return map
 
 
+a = 20
+# scaling in pixels
+scale_up_left_corner = 10
+scale_down_right_corner = 0
+distance = 20
+CLOUDS = False
+SHOW = True
+SHOW_POLYGONS = False
+USE_FIXED_SIZES = True
+SHOW_SQUARE_AND_HEX_RASTER = False
+polygons_file = 'polygons.txt'
+
+doubleheight_directions = {
+    "UP": [-2, 0],
+    "DOWN": [2, 0],
+    "DOWN_LEFT": [1, -1],
+    "UP_LEFT": [-1, -1],
+    "UP_RIGHT": [-1, 1],
+    "DOWN_RIGHT": [1, 1]
+}
+
+directions = ("UP", "DOWN", "DOWN_LEFT", "UP_LEFT", "UP_RIGHT", "DOWN_RIGHT")
+
+LINE_DIRS = {
+    (1, 1): "DOWN_RIGHT",
+    (1, 0): "DOWN",
+    (1, -1): "DOWN_LEFT",
+    (-1, 0): "UP",
+    (-1, 1): "UP_RIGHT",
+    (-1, -1): "UP_LEFT"
+}
+
 if __name__ == "__main__":
-    a = 20
-    distance = 10
-    CLOUDS = True
-    SHOW_POLYGONS = False
-    USE_FIXED_SIZES = False
-    SHOW_SQUARE_AND_HEX_RASTER = False
-    polygons_file = 'polygons.txt'
-
-    doubleheight_directions = {
-        "UP": [-2, 0],
-        "DOWN": [2, 0],
-        "DOWN_LEFT": [1, -1],
-        "UP_LEFT": [-1, -1],
-        "UP_RIGHT": [-1, 1],
-        "DOWN_RIGHT": [1, 1]
-    }
-
-    directions = ("UP", "DOWN", "DOWN_LEFT", "UP_LEFT", "UP_RIGHT", "DOWN_RIGHT")
-
-    LINE_DIRS = {
-        (1, 1): "DOWN_RIGHT",
-        (1, 0): "DOWN",
-        (1, -1): "DOWN_LEFT",
-        (-1, 0): "UP",
-        (-1, 1): "UP_RIGHT",
-        (-1, -1): "UP_LEFT"
-    }
-
     polygons = read_polygons_from(polygons_file)
 
     width, height = get_image_size_by_polygons(polygons)
@@ -332,7 +340,7 @@ if __name__ == "__main__":
         width, height = 640, 480
 
     if SHOW_POLYGONS:
-        show_polygons(polygons)
+        show_polygons(polygons, width, height)
 
     hex_width = math.ceil(width / (3 * a))
     hex_height = math.ceil(height / (np.sqrt(3) * a) * 2) + 1
@@ -359,14 +367,15 @@ if __name__ == "__main__":
             dynamic_hex_map = np.copy(static_hex_map)
             dynamic_hex_map = update_map(f"txt/broadcast{broadcast}.txt", dynamic_hex_map)
             broadcast += 1
-        finished = move()
+        finished = move(visited, dynamic_hex_map, end)
         if finished:
-            paths = move_back(visited)
+            paths = move_back(visited, end, dynamic_hex_map)
             to_color = set.union(*paths)
-            draw_hex_image(to_color, "red")  # ,save_to=f"pictures/broadcast{8}.png")
+            draw_hex_image(to_color, "red", width, height, hex_width, hex_height,
+                           dynamic_hex_map)  # ,save_to=f"pictures/broadcast{8}.png")
         else:
             to_color = set.union(*visited[-distance:])
-            # draw_hex_image(to_color, colors[colour % len(colors)])
+            # draw_hex_image(to_color, colors[colour % len(colors)], width, height, hex_width, hex_height, dynamic_hex_map)
             print(iterations)
         colour += 1
         iterations += 1
@@ -378,7 +387,8 @@ if __name__ == "__main__":
     paths.pop()
     paths = paths[::-1]
     time = math.ceil(len(paths) / distance)
-
+    # draw_hex_image({(0,0)}, "red", width, height, hex_width, hex_height, dynamic_hex_map, save_to=f"demo_dyn_2/broadcast{0}.png")
+    i = 1
     if not CLOUDS:
         for step in range(0, distance * time, distance):
             layer = paths[step:step + distance]
@@ -386,10 +396,12 @@ if __name__ == "__main__":
                 dynamic_hex_map = np.copy(static_hex_map)
                 dynamic_hex_map = update_map(f"txt/broadcast{broadcast}.txt", dynamic_hex_map)
                 broadcast += 1
-            draw_hex_image(to_color, "red")
+            draw_hex_image(to_color, "red", width, height, hex_width, hex_height, dynamic_hex_map)
+            i += 1
             new_layer = set.union(*layer)
             to_color = set.union(to_color, new_layer)
-            draw_hex_image(to_color, "red")  # , save_to=f"pictures/broadcast{broadcast}.png")
+            draw_hex_image(to_color, "red", width, height, hex_width, hex_height, dynamic_hex_map)
+            i += 1
     else:
         for step in range(0, distance * time, distance):
             layer = paths[step:step + distance]
@@ -397,6 +409,8 @@ if __name__ == "__main__":
                 dynamic_hex_map = np.copy(static_hex_map)
                 dynamic_hex_map = update_map(f"txt/broadcast{broadcast}.txt", dynamic_hex_map)
                 broadcast += 1
-            draw_hex_image(to_color, "red")
+            draw_hex_image(to_color, "red", width, height, hex_width, hex_height, dynamic_hex_map)
+            i += 1
             to_color = set.union(*layer)
-            draw_hex_image(to_color, "red")  # , save_to=f"pictures/broadcast{broadcast}.png")
+            draw_hex_image(to_color, "red", width, height, hex_width, hex_height, dynamic_hex_map)
+            i += 1
