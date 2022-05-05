@@ -360,9 +360,69 @@ def update_map(file, map, a, alpha=None):
     return map
 
 
+def scale_coords(old_range_x, old_range_y, new_range_x, new_range_y, point):
+    a_old, b_old = old_range_x
+    a_new, b_new = new_range_x
+    k_x = (b_new - a_new) / (b_old - a_old)
+    x_mid_old = (b_old - a_old) / 2 + a_old
+    x_mid_new = (b_new - a_new) / 2 + a_new
+    a_old, b_old = old_range_y
+    a_new, b_new = new_range_y
+    k_y = (b_new - a_new) / (b_old - a_old)
+    y_mid_old = (b_old - a_old) / 2 + a_old
+    y_mid_new = (b_new - a_new) / 2 + a_new
+    x_old, y_old = point
+    return [(x_old - x_mid_old) * k_x + x_mid_new,
+            (y_old - y_mid_old) * k_y + y_mid_new]
+
+
+def create_broadcasts_from_folder(path, save_path):
+    c_count = 0
+    p_count = 0
+    b_count = 1
+    max_x = 0
+    min_y = 100
+    min_x = 100
+    max_y = -100
+    with open(path + "/w_dates.txt", "r") as fdates, \
+            open(path + "/w_dims.txt", "r") as fdims, open(path + "/w_points.txt", "r") as fpoints:
+        dates = fdates.readlines()
+        n = len(dates)
+        contours = fdims.readlines()
+        points = fpoints.readlines()
+        for date_line in dates[:n]:
+            contours_num = int(date_line.split('\t')[1])
+            with open(save_path + f"/broadcast{b_count}.txt", "w") as save_file:
+                b_count += 1
+                for dims_line in contours[c_count:c_count + contours_num]:
+                    points_num, is_closed = list(map(int, dims_line.split(',')))
+                    polygon = []
+                    for point_line in points[p_count:p_count + points_num]:
+                        x, y = list(map(float, point_line.strip().split(',')))
+                        x, y = scale_coords([25, 60], [-80.5, -9.5], [10, 630], [10, 470], [x, y])
+                        polygon.append(round(x))
+                        polygon.append(round(y))
+                        if x > max_x:
+                            max_x = x
+                        if y < min_y:
+                            min_y = y
+                        if x < min_x:
+                            min_x = x
+                        if y > max_y:
+                            max_y = y
+                    p_count += points_num
+                    if not is_closed:
+                        polygon.append(polygon[0])
+                        polygon.append(polygon[1])
+                    save_file.write(",".join([str(coord) for coord in polygon]))
+                    save_file.write("\n")
+            c_count += contours_num
+    print(f"max_x={max_x}, min_x={min_x}, max_y={max_y}, min_y={min_y}")
+
+
 a = 20
 # scaling in pixels
-scale_up_left_corner = 10
+scale_up_left_corner = 0
 scale_down_right_corner = 0
 distance = 20
 CLOUDS = False
