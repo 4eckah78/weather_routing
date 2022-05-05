@@ -298,9 +298,64 @@ def move_back(visited, end, dynamic_hex_map):
     return paths
 
 
-def update_map(file, map):
+def scale_polygons_coords_up_left_corner(pols, scale_x, scale_y):
+    new_pols = []
+    for pol in pols:
+        new_pols.append([(x + scale_x if j % 2 == 0 else x + scale_y) for j, x in enumerate(pol)])
+    return new_pols
+
+
+def rotate_polygons_around_center(polygons, start_end, center, alpha):
+    new_polygons_coords = []
+    scale_x, scale_y = 0, 0
+    pols_start_end = polygons.copy()
+    pols_start_end.append(start_end)
+    for polygon in pols_start_end:
+        new_coords = []
+        for point in zip(polygon[::2], polygon[1::2]):
+            x1, y1 = rotate_pixel_around_center(point, center, alpha)
+            if x1 < scale_x:
+                scale_x = x1
+            if y1 < scale_y:
+                scale_y = y1
+            new_coords.append(x1)
+            new_coords.append(y1)
+        new_polygons_coords.append(new_coords)
+    scale_x, scale_y = 500, 500
+    # print(f"scale_x={scale_x}, scale_y={scale_y}")
+    new_polygons_coords = scale_polygons_coords_up_left_corner(new_polygons_coords, scale_x, scale_y)
+    new_start = [new_polygons_coords[-1][0], new_polygons_coords[-1][1]]
+    new_end = [new_polygons_coords[-1][2], new_polygons_coords[-1][3]]
+    return new_polygons_coords, new_start, new_end
+
+
+def rotate_pixel_around_center(point, center, alpha):
+    x, y = point
+    x0, y0 = center
+    x1 = (x - x0) * np.cos(np.deg2rad(alpha)) + (y - y0) * np.sin(np.deg2rad(alpha))
+    y1 = -(x - x0) * np.sin(np.deg2rad(alpha)) + (y - y0) * np.cos(np.deg2rad(alpha))
+    return round(x1), round(y1)
+
+
+def update_map(file, map, a, alpha=None):
     polygons = read_polygons_from(file)
-    hex_polygons, map = from_pixel_to_hex_polygons(polygons, map)
+    polygons = scale_polygons_coords_up_left_corner(polygons, scale_up_left_corner, scale_up_left_corner)
+    if alpha is not None:
+        width, height = get_image_size_by_polygons(polygons, a)
+        if USE_FIXED_SIZES:
+            width, height = 640, 480
+        start = (scale_up_left_corner, scale_up_left_corner)
+        end = (width - 1 + scale_up_left_corner, height - 1 + scale_up_left_corner)
+        start_end = [start[0], start[1], end[0], end[1]]
+        center = [height // 2, width // 2]
+        rotated_polygons, start, end = rotate_polygons_around_center(polygons, start_end, center, alpha)
+        draw_start_pixel = tuple(start)
+        draw_end_pixel = tuple(end)
+        new_width, new_height = get_image_size_by_polygons(rotated_polygons, a)
+        rotated_polygons = rotated_polygons[:-1]
+        polygons = rotated_polygons
+        height, width = 1000, 1000
+    hex_polygons, map = from_pixel_to_hex_polygons(polygons, map, a)
     map = raster_hex_polygons(hex_polygons, map)
     return map
 
