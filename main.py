@@ -53,7 +53,7 @@ def generate_N_polygons(N, r_range, sides_range, show=False, save_to=None):
                 output_file.write(pol)
 
 
-def pixel_to_flat_hex(x, y):
+def pixel_to_flat_hex(x, y, a):
     row = y * 2 / np.sqrt(3) / a
     col = x * 2 / 3 / a
     row, col = cube_to_doubleheight(*cube_round(*doubleheight_to_cube(row, col)))
@@ -114,12 +114,12 @@ def show_polygons(pols, width, height, save_to=None):
         image.save(save_to)
 
 
-def from_pixel_to_hex_polygons(pols, map):
+def from_pixel_to_hex_polygons(pols, map, a):
     hex_pols = []
     for polygon in pols:
         hex_pol = []
         for i in range(0, len(polygon), 2):
-            row, col = pixel_to_flat_hex(polygon[i], polygon[i + 1])
+            row, col = pixel_to_flat_hex(polygon[i], polygon[i + 1], a)
             map[row, col // 2] = 1
             hex_pol.append([row, col])
             # x, y = doubleheight_to_pixel(row, col)
@@ -200,7 +200,7 @@ def v_biased_lines(start, end, double_dx, dy, pol_sides_list, map):
     return map
 
 
-def get_image_size_by_polygons(pols):
+def get_image_size_by_polygons(pols, a):
     width, height = 0, 0
     for pol in pols:
         w, h = max(pol[::2]), max(pol[1::2])
@@ -231,7 +231,8 @@ def raster_hex_polygons(hex_pols, map):
     return map
 
 
-def draw_hex_image(need_to_draw, colour, width, height, hex_width, hex_height, dynamic_hex_map, polygons=None, save_to=None):
+def draw_hex_image(need_to_draw, colour, width, height, hex_width, hex_height, dynamic_hex_map, a,
+                   draw_start_end_pixels=None, polygons=None, save_to=None):
     image = Image.new("RGB", (width + scale_down_right_corner, height + scale_down_right_corner), color=(255, 255, 255))
     draw = ImageDraw.Draw(image)
 
@@ -241,7 +242,7 @@ def draw_hex_image(need_to_draw, colour, width, height, hex_width, hex_height, d
             if j % 2 != 0:
                 x0 = 3 * a * (2 * i + 1) / 2
             y0 = j * np.sqrt(3) * a / 2
-            row, col = pixel_to_flat_hex(x0, y0)
+            row, col = pixel_to_flat_hex(x0, y0, a)
             color = (255, 255, 255)
             num = dynamic_hex_map[row, col // 2]
             if num == 1:
@@ -251,6 +252,12 @@ def draw_hex_image(need_to_draw, colour, width, height, hex_width, hex_height, d
             if (row, col) in need_to_draw and num == 1:
                 color = "darkred"
             draw.regular_polygon((x0, y0, a), 6, fill=color, outline=(0, 0, 0))
+    if draw_start_end_pixels:
+        start, end = draw_start_end_pixels
+        draw.ellipse([start[0] - 10, start[1] - 10, start[0] + 10, start[1] + 10], fill="green")
+        draw.ellipse([end[0] - 10, end[1] - 10, end[0] + 10, end[1] + 10], fill="black")
+        draw.line(draw_start_end_pixels, fill="black", width=3)
+
     if SHOW_SQUARE_AND_HEX_RASTER:
         if not polygons:
             print("No polygons in draw_hex_image arguments!")
@@ -282,9 +289,7 @@ def move(visited, dynamic_hex_map, end):
 
 def move_back(visited, end, dynamic_hex_map):
     paths = [set([end])]
-    i = 0
     for curr_layer in visited[::-1]:
-        i += 1
         next_layer = set()
         for row, col in paths[-1]:
             neighbors = set(get_all_neighbors(row, col, dynamic_hex_map))
@@ -346,7 +351,7 @@ if __name__ == "__main__":
     hex_height = math.ceil(height / (np.sqrt(3) * a) * 2) + 1
     static_hex_map = np.zeros((hex_height, hex_width), dtype=np.int32)
 
-    hex_polygons, static_hex_map = from_pixel_to_hex_polygons(polygons, static_hex_map)
+    hex_polygons, static_hex_map = from_pixel_to_hex_polygons(polygons, static_hex_map, a)
 
     static_hex_map = raster_hex_polygons(hex_polygons, static_hex_map)
 
@@ -365,7 +370,7 @@ if __name__ == "__main__":
     while not finished and iterations < max_iterations:
         if broadcast < 6:
             dynamic_hex_map = np.copy(static_hex_map)
-            dynamic_hex_map = update_map(f"txt/broadcast{broadcast}.txt", dynamic_hex_map)
+            dynamic_hex_map = update_map(f"txt/broadcast{broadcast}.txt", dynamic_hex_map, a)
             broadcast += 1
         finished = move(visited, dynamic_hex_map, end)
         if finished:
