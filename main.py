@@ -73,7 +73,8 @@ def cube_to_doubleheight(x, y, z):
     return row, col
 
 
-def doubleheight_to_pixel(row, col):
+def doubleheight_to_pixel(row, col, a):
+    # return center of hexagon
     x = a * 3 / 2 * col
     y = a * np.sqrt(3) / 2 * row
     return x, y
@@ -100,7 +101,7 @@ def cube_round(x, y, z):
 
 def read_polygons_from(filename):
     with open(filename, 'r') as f:
-        pols = [list(map(int, pol.rstrip().split(','))) for pol in f.readlines()]
+        pols = [list(map(float, pol.rstrip().split(','))) for pol in f.readlines()]
     return pols
 
 
@@ -232,7 +233,7 @@ def raster_hex_polygons(hex_pols, map):
 
 
 def draw_hex_image(need_to_draw, colour, width, height, hex_width, hex_height, dynamic_hex_map, a,
-                   draw_start_end_pixels=None, polygons=None, save_to=None):
+                   draw_start_end_pixels=None, polygons=None, save_to=None, show=True):
     image = Image.new("RGB", (width + scale_down_right_corner, height + scale_down_right_corner), color=(255, 255, 255))
     draw = ImageDraw.Draw(image)
 
@@ -254,9 +255,10 @@ def draw_hex_image(need_to_draw, colour, width, height, hex_width, hex_height, d
             draw.regular_polygon((x0, y0, a), 6, fill=color, outline=(0, 0, 0))
     if draw_start_end_pixels:
         start, end = draw_start_end_pixels
-        draw.ellipse([start[0] - 10, start[1] - 10, start[0] + 10, start[1] + 10], fill="green")
-        draw.ellipse([end[0] - 10, end[1] - 10, end[0] + 10, end[1] + 10], fill="black")
-        draw.line(draw_start_end_pixels, fill="black", width=3)
+        r = 3
+        draw.ellipse([start[0] - r, start[1] - r, start[0] + r, start[1] + r], fill="green")
+        draw.ellipse([end[0] - r, end[1] - r, end[0] + r, end[1] + r], fill="pink")
+        draw.line(draw_start_end_pixels, fill="yellow", width=2)
 
     if SHOW_SQUARE_AND_HEX_RASTER:
         if not polygons:
@@ -264,7 +266,7 @@ def draw_hex_image(need_to_draw, colour, width, height, hex_width, hex_height, d
         else:
             for pol in polygons:
                 draw.polygon((pol), outline=(255, 0, 0))
-    if SHOW:
+    if show:
         image.show()
     if save_to:
         image.save(save_to)
@@ -337,10 +339,10 @@ def rotate_pixel_around_center(point, center, alpha):
     return round(x1), round(y1)
 
 
-def update_map(file, map, a, alpha=None):
+def update_map(file, map, a, alpha=0):
     polygons = read_polygons_from(file)
     polygons = scale_polygons_coords_up_left_corner(polygons, scale_up_left_corner, scale_up_left_corner)
-    if alpha is not None:
+    if alpha:
         width, height = get_image_size_by_polygons(polygons, a)
         if USE_FIXED_SIZES:
             width, height = 640, 480
@@ -356,7 +358,7 @@ def update_map(file, map, a, alpha=None):
         polygons = rotated_polygons
         height, width = 1000, 1000
     hex_polygons, map = from_pixel_to_hex_polygons(polygons, map, a)
-    map = raster_hex_polygons(hex_polygons, map)
+    map = raster_hex_polygons(hex_polygons, map, a)
     return map
 
 
@@ -400,8 +402,8 @@ def create_broadcasts_from_folder(path, save_path):
                     for point_line in points[p_count:p_count + points_num]:
                         x, y = list(map(float, point_line.strip().split(',')))
                         x, y = scale_coords([25, 60], [-80.5, -9.5], [10, 630], [10, 470], [x, y])
-                        polygon.append(round(x))
-                        polygon.append(round(y))
+                        polygon.append(x)
+                        polygon.append(y)
                         if x > max_x:
                             max_x = x
                         if y < min_y:
@@ -426,7 +428,6 @@ scale_up_left_corner = 0
 scale_down_right_corner = 0
 distance = 20
 CLOUDS = False
-SHOW = True
 SHOW_POLYGONS = False
 USE_FIXED_SIZES = True
 SHOW_SQUARE_AND_HEX_RASTER = False
@@ -468,7 +469,7 @@ if __name__ == "__main__":
 
     hex_polygons, static_hex_map = from_pixel_to_hex_polygons(polygons, static_hex_map, a)
 
-    static_hex_map = raster_hex_polygons(hex_polygons, static_hex_map)
+    static_hex_map = raster_hex_polygons(hex_polygons, static_hex_map, a)
 
     start = (0, 0)
     visited = [{start}]
