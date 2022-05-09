@@ -122,10 +122,7 @@ def from_pixel_to_hex_polygons(pols, map, a):
         for i in range(0, len(polygon), 2):
             row, col = pixel_to_flat_hex(polygon[i], polygon[i + 1], a)
             map[row, col // 2] = 1
-            hex_pol.append([row, col])
-            # x, y = doubleheight_to_pixel(row, col)
-            # print(int(polygon[i]), int(polygon[i + 1]), " --> ", row, col)
-            # print(row, col, " --> ", x, y)
+            hex_pol.append((row, col))
         hex_pols.append(hex_pol)
     return hex_pols, map
 
@@ -214,7 +211,7 @@ def get_image_size_by_polygons(pols, a):
             width = w
         if h > height:
             height = h
-    return width + 2 * a, height + 2 * a
+    return int(width + 2 * a), int(height + 2 * a)
 
 
 def fill_line(up_hex, down_hex, map):
