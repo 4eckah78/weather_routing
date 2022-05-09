@@ -144,17 +144,26 @@ def get_all_neighbors(row, col, map):
     return neighbors
 
 
-def bresenham(start, end, pol_sides_list, map):
+def bresenham(start, end, min_max_col, map):
     double_dx = end[0] - start[0]
     dy = end[1] - start[1]
     if abs(double_dx) <= abs(dy):
-        return v_biased_lines(start, end, double_dx, dy, pol_sides_list, map)
+        return v_biased_lines(start, end, double_dx, dy, min_max_col, map)
     else:
-        return h_biased_lines(start, end, double_dx, dy, pol_sides_list, map)
+        return h_biased_lines(start, end, double_dx, dy, min_max_col, map)
 
 
-def h_biased_lines(start, end, double_dx, dy, pol_sides_list, map):
+def update_min_max(min_max_col, col):
+    if min_max_col[0] > col:
+        min_max_col[0] = col
+    if min_max_col[1] < col:
+        min_max_col[1] = col
+
+
+def h_biased_lines(start, end, double_dx, dy, min_max_col, map):
     row, col = start
+    update_min_max(min_max_col, col)
+
     row1, col1 = end
     e = 0
     x_sign = 1 if double_dx >= 0 else -1
@@ -170,15 +179,14 @@ def h_biased_lines(start, end, double_dx, dy, pol_sides_list, map):
             row, col = neighbor(row, col, LINE_DIRS[x_sign, 0])
             e += by
         map[row, col // 2] = 1
-        if row + col in pol_sides_list:
-            pol_sides_list[row + col].append([row, col])
-        else:
-            pol_sides_list[row + col] = [[row, col]]
+        update_min_max(min_max_col, col)
     return map
 
 
-def v_biased_lines(start, end, double_dx, dy, pol_sides_list, map):
+def v_biased_lines(start, end, double_dx, dy, min_max_col, map):
     row, col = start
+    update_min_max(min_max_col, col)
+
     row1, col1 = end
     e = 0
     x_sign = 1 if double_dx >= 0 else -1
@@ -194,10 +202,7 @@ def v_biased_lines(start, end, double_dx, dy, pol_sides_list, map):
             row, col = neighbor(row, col, LINE_DIRS[-x_sign, y_sign])
             e += by
         map[row, col // 2] = 1
-        if row + col in pol_sides_list:
-            pol_sides_list[row + col].append([row, col])
-        else:
-            pol_sides_list[row + col] = [[row, col]]
+        update_min_max(min_max_col, col)
     return map
 
 
@@ -212,23 +217,54 @@ def get_image_size_by_polygons(pols, a):
     return width + 2 * a, height + 2 * a
 
 
-def fill_pol(pol_sides_list, map):
-    for summ, hexes in pol_sides_list.items():
-        start_hex = min(hexes, key=lambda h: h[0])
-        end_hex = max(hexes, key=lambda h: h[0])
-        row, col = start_hex
-        while [row, col] != end_hex:
-            map[row, col // 2] = 1
-            row, col = neighbor(row, col, "DOWN_LEFT")
+def fill_line(up_hex, down_hex, map):
+    row, col = up_hex
+    while (row, col) != down_hex:
+        map[row, col // 2] = 1
+        row, col = neighbor(row, col, "DOWN")
+    if (row, col) == down_hex:
+        map[row, col // 2] = 1
+
+
+def fill_pol(lines, map):
+    for _, line in lines.items():
+        for i in range(0, len(line), 2):
+            fill_line(line[i], line[i + 1], map)
     return map
 
 
-def raster_hex_polygons(hex_pols, map):
+def get_lines_to_fill_pol(hex_pol, min_max_col, a):
+    min_c, max_c = min_max_col
+    lines = {doubleheight_to_pixel(0, c, a)[0]: [] for c in range(min_c, max_c + 1)}
+    for edge_id in range(len(hex_pol) - 1):
+        x1, y1 = doubleheight_to_pixel(*hex_pol[edge_id], a)
+        x2, y2 = doubleheight_to_pixel(*hex_pol[edge_id + 1], a)
+        if x1 != x2:
+
+            if x1 > x2:
+                x1, x2, y1, y2 = x2, x1, y2, y1
+
+            x, y = x1, y1
+            dy = (y2 - y1) / (x2 - x1)
+
+            while x < x2:
+                x += 1.5 * a
+                y += dy * 1.5 * a
+                lines[x].append(y)
+
+    for k, v in lines.items():
+        lines[k] = sorted(lines[k])
+    hex_lines = {x: [pixel_to_flat_hex(x, y, a) for y in ys] for x, ys in lines.items()}
+    return hex_lines
+
+
+def raster_hex_polygons(hex_pols, map, a):
     for pol in hex_pols:
-        pol_sides_list = {}
-        for i in range(len(pol) - 1):
-            map = bresenham(pol[i], pol[i + 1], pol_sides_list, map)
-        map = fill_pol(pol_sides_list, map)
+        min_max_col = [len(map[1]) * 2 + 1, -1]
+        for edge_id in range(len(pol) - 1):
+            map = bresenham(pol[edge_id], pol[edge_id + 1], min_max_col, map)
+        lines = get_lines_to_fill_pol(pol, min_max_col, a)
+        map = fill_pol(lines, map)
     return map
 
 
