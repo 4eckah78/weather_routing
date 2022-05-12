@@ -4,51 +4,47 @@ from mpl_toolkits import mplot3d
 import time
 
 
-def experiment(a_list, alpha_list, SHOW=False, opt=False, broadcasts_path="txt/"):
+def experiment(a_list, alpha_list, SHOW=False, opt=False, broadcasts_path="txt/", static_constraints_path="polygons.txt"):
     result = np.zeros((len(a_list), len(alpha_list)))
     for i, a in enumerate(a_list):
         print(f"a = {a}")
         for j, alpha in enumerate(alpha_list):
             # print(f"alpha={alpha}")
             begin = time.time()
-            broadcast = 1
-            if broadcasts_path != "txt/":
-                polygons = read_polygons_from(broadcasts_path + f"broadcast{broadcast}.txt")
-                width, height = get_image_size_by_polygons(polygons, a)
-                broadcast += 1
+            if static_constraints_path != "polygons.txt":
+                polygons = read_polygons_from(static_constraints_path + f"broadcast1.txt")
             else:
-                polygons = read_polygons_from(polygons_file)
+                polygons = read_polygons_from(static_constraints_path)
 
             polygons = scale_polygons_coords_up_left_corner(polygons, scale_up_left_corner, scale_up_left_corner)
 
-            width, height = get_image_size_by_polygons(polygons, a)
+            pixel_width, pixel_height = get_image_size_by_polygons(polygons, a)
             if USE_FIXED_SIZES:
                 width, height = 640, 480
 
-            start = (scale_up_left_corner, scale_up_left_corner)
-            end = (width - 1 + scale_up_left_corner, height - 1 + scale_up_left_corner)
+            pixel_start = (0 + scale_up_left_corner, 0 + scale_up_left_corner)
+            pixel_end = (pixel_width - 1, pixel_height - 1)
 
             # turn to 30 degree (optimal)
             if opt:
-                betta = np.rad2deg(np.arctan(-end[1] / end[0]))
-                opt_alpha = -30 - betta
+                betta = np.rad2deg(np.arctan((pixel_end[1] - pixel_start[1]) / (pixel_end[0] - pixel_start[0])))
+                opt_alpha = -30 + betta
                 alpha = opt_alpha
 
-            # print(f"distance = {np.sqrt((end[0]-start[0])**2 + (end[1]-start[1])**2)}")
-            start_end = [start[0], start[1], end[0], end[1]]
-
-            # center = [height // 2, width // 2]
-            # rotated_polygons, start, end = rotate_polygons_around_center(polygons, start_end, center, alpha)
-            # draw_start_pixel = tuple(start)
-            # draw_end_pixel = tuple(end)
-            # new_width, new_height = get_image_size_by_polygons(rotated_polygons, a)
-            # rotated_polygons = rotated_polygons[:-1]
-            # if SHOW_POLYGONS:
-            #     show_polygons(polygons, width, height)
-            #     show_polygons(rotated_polygons, new_width, new_height)
+            # start_end = [start[0], start[1], end[0], end[1]]
+            # if alpha:
+            #     center = [height // 2, width // 2]
+            #     rotated_polygons, start, end = rotate_polygons_around_center(polygons, start_end, center, alpha)
+            #     draw_start_pixel = tuple(start)
+            #     draw_end_pixel = tuple(end)
+            #     new_width, new_height = get_image_size_by_polygons(rotated_polygons, a)
+            #     rotated_polygons = rotated_polygons[:-1]
+            #     if SHOW_POLYGONS:
+            #         show_polygons(polygons, width, height)
+            #         show_polygons(rotated_polygons, new_width, new_height)
             #
-            # polygons = rotated_polygons
-            width, height = 1000, 1000
+            #     polygons = rotated_polygons
+            width, height = pixel_width, pixel_height
             # print(f"height={height}, width={width}")
 
             hex_width = math.ceil((width + scale_down_right_corner) / (3 * a))
@@ -56,17 +52,15 @@ def experiment(a_list, alpha_list, SHOW=False, opt=False, broadcasts_path="txt/"
             print(f"hex width x height: {hex_width}x{hex_height}")
             print(f"pixel width x height: {width}x{height}")
             static_hex_map = np.zeros((hex_height, hex_width), dtype=np.int32)
-
-            start = pixel_to_flat_hex(start[0], start[1], a)
-            end = pixel_to_flat_hex(end[0], end[1], a)
+            # draw = pixel_to_flat_hex(polygons[0][0], polygons[0][1], a)
+            # draw_hex_image([draw], "red", width, height, hex_width, hex_height, static_hex_map, a,
+            #                polygons=polygons)
             hex_polygons, static_hex_map = from_pixel_to_hex_polygons(polygons, static_hex_map, a)
-            static_hex_map = raster_hex_polygons(hex_polygons, static_hex_map, polygons, width, height, hex_width, hex_height, a)
-            draw_hex_image([start, end], "red", width, height, hex_width, hex_height, static_hex_map, a,
-                           polygons=polygons)
-
-            start = pixel_to_flat_hex(start[0], start[1], a)
-            end = pixel_to_flat_hex(end[0], end[1], a)
-            visited = [{start}]
+            static_hex_map = raster_hex_polygons(hex_polygons, static_hex_map, a)
+            # draw_hex_image([start, end], "red", width, height, hex_width, hex_height, static_hex_map, a,
+            #                polygons=polygons)
+            start = pixel_to_flat_hex(pixel_start[0], pixel_start[1], a)
+            end = pixel_to_flat_hex(pixel_end[0], pixel_end[1], a)
 
             colors = ["yellow", "purple", "green", "pink", "gray", "blue", "lime", "orange", "salmon",
                       "silver", "teal", "violet", "wheat"]
@@ -74,14 +68,25 @@ def experiment(a_list, alpha_list, SHOW=False, opt=False, broadcasts_path="txt/"
             max_iterations = static_hex_map.shape[0] * static_hex_map.shape[1]
             iterations = 0
             finished = False
-            dynamic_hex_map = np.copy(static_hex_map)
             colour = 0
-            draw_hex_image([start, end], "red", width, height, hex_width, hex_height, dynamic_hex_map, a, polygons=polygons)
+            broadcast = 1
+            draw_hex_image([start, end], "red", width, height, hex_width, hex_height, static_hex_map, a, polygons=polygons
+                           )#,save_to=f"./pictures_to_VKR/finding_path_with_dynamic_constraints_and_opt_angle_2/pic{step}.png", show=False)
+            if alpha:
+                polygons, start, end  = rotate_polygons(polygons, alpha, pixel_start, pixel_end, pixel_width, pixel_height, a)
+                static_hex_map = np.zeros((hex_height, hex_width), dtype=np.int32)
+                hex_polygons, static_hex_map = from_pixel_to_hex_polygons(polygons, static_hex_map, a)
+                static_hex_map = raster_hex_polygons(hex_polygons, static_hex_map, a)
+                draw_hex_image([start, end], "red", width, height, hex_width, hex_height, static_hex_map, a,
+                               polygons=polygons
+                               )#,save_to=f"./pictures_to_VKR/finding_path_with_dynamic_constraints_and_opt_angle_2/pic_rotated.png", show=False)
+
+            visited = [{start}]
             while not finished and iterations < max_iterations:
                 dynamic_hex_map = np.copy(static_hex_map)
-                dynamic_hex_map = update_map(f"{broadcasts_path}broadcast{broadcast}.txt", dynamic_hex_map, a, alpha=alpha)
+                dynamic_hex_map = update_map(f"{broadcasts_path}broadcast{broadcast}.txt", dynamic_hex_map, a, pixel_start, pixel_end, width, height, alpha=alpha)
                 broadcast += 1
-                draw_hex_image([start, end], "red", width, height, hex_width, hex_height, dynamic_hex_map, a)
+                # draw_hex_image([start, end], "red", width, height, hex_width, hex_height, dynamic_hex_map, a)
                 bg = time.time()
                 finished = move(visited, dynamic_hex_map, end)
                 if finished:
@@ -94,22 +99,22 @@ def experiment(a_list, alpha_list, SHOW=False, opt=False, broadcasts_path="txt/"
                         paths.pop()
                         paths = paths[::-1]
                         t = math.ceil(len(paths) / distance)
-                        # draw_hex_image({(0,0)}, "red", width, height, hex_width, hex_height, dynamic_hex_map, save_to=f"demo_dyn_2/broadcast{0}.png")
                         for step in range(0, distance * t, distance):
                             layer = paths[step:step + distance]
-                            if broadcast < 6:
-                                dynamic_hex_map = np.copy(static_hex_map)
-                                dynamic_hex_map = update_map(f"{broadcasts_path}broadcast{broadcast}.txt", dynamic_hex_map, a,
-                                                             alpha=alpha)
-                                broadcast += 1
+                            dynamic_hex_map = np.copy(static_hex_map)
+                            dynamic_hex_map = update_map(f"{broadcasts_path}broadcast{broadcast}.txt", dynamic_hex_map,
+                                                         a, pixel_start, pixel_end, width, height, alpha=alpha)
+
+                            broadcast += 1
+                            to_color.add(end)
                             draw_hex_image(to_color, "red", width, height, hex_width, hex_height,
                                            dynamic_hex_map,
-                                           a)
+                                           a)#,save_to=f"./pictures_to_VKR/finding_path_with_dynamic_constraints_and_opt_angle_2/pic{step}.png", show=False)
                             new_layer = set.union(*layer)
                             to_color = set.union(to_color, new_layer)
                             draw_hex_image(to_color, "red", width, height, hex_width, hex_height,
                                            dynamic_hex_map,
-                                           a)
+                                           a)#, save_to=f"./pictures_to_VKR/finding_path_with_dynamic_constraints_and_opt_angle_2/pic{step + 1}.png", show=False)
                         # draw_hex_image(to_color, "red", width, height, hex_width, hex_height,
                         #                dynamic_hex_map,
                         #                a)#, draw_start_end_pixels=[draw_start_pixel,
@@ -123,7 +128,7 @@ def experiment(a_list, alpha_list, SHOW=False, opt=False, broadcasts_path="txt/"
                     # print(f"alpha={alpha}")
                 else:
                     to_color = set.union(*visited[-distance:])
-                    # draw_hex_image(to_color, colors[colour % len(colors)], width, height, hex_width, hex_height, dynamic_hex_map)
+                    # draw_hex_image(to_color, colors[colour % len(colors)], width, height, hex_width, hex_height, dynamic_hex_map, a)
                     #                     # print(f"iteration {iterations}")
                 colour += 1
                 iterations += 1
@@ -175,8 +180,8 @@ if __name__ == "__main__":
     #     create_broadcasts_from_folder(f"./weather1/{i}", save_path=f"./my_weather1/{i}")
     # for i in range(1, 21):
     #     create_broadcasts_from_folder(f"./weather1/{i}", save_path=f"./my_weather2/{i}")
-    # create_broadcasts_from_folder("./weather1/9", save_path=f"./test")
-    experiment([a], [alpha], SHOW=True, opt=True, broadcasts_path="./my_weather1/9/")
+    # create_broadcasts_from_folder("./weather1/15", save_path="./my_weather1/15", width=640, height=480)
+    experiment([a], [alpha], SHOW=True, opt=True, broadcasts_path="./my_weather1/13/")
 
 
     # experiment(a_list, [alpha])

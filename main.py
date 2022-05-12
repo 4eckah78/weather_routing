@@ -356,7 +356,7 @@ def rotate_polygons_around_center(polygons, start_end, center, alpha):
             new_coords.append(x1)
             new_coords.append(y1)
         new_polygons_coords.append(new_coords)
-    scale_x, scale_y = 500, 500
+    scale_x, scale_y = scale_up_left_corner + abs(scale_x), scale_up_left_corner + abs(scale_y)
     # print(f"scale_x={scale_x}, scale_y={scale_y}")
     new_polygons_coords = scale_polygons_coords_up_left_corner(new_polygons_coords, scale_x, scale_y)
     new_start = [new_polygons_coords[-1][0], new_polygons_coords[-1][1]]
@@ -367,29 +367,29 @@ def rotate_polygons_around_center(polygons, start_end, center, alpha):
 def rotate_pixel_around_center(point, center, alpha):
     x, y = point
     x0, y0 = center
-    x1 = (x - x0) * np.cos(np.deg2rad(alpha)) + (y - y0) * np.sin(np.deg2rad(alpha))
-    y1 = -(x - x0) * np.sin(np.deg2rad(alpha)) + (y - y0) * np.cos(np.deg2rad(alpha))
+    alpha_rad = np.deg2rad(alpha)
+    x1 = (x - x0) * np.cos(alpha_rad) + (y - y0) * np.sin(alpha_rad)
+    y1 = -(x - x0) * np.sin(alpha_rad) + (y - y0) * np.cos(alpha_rad)
     return round(x1), round(y1)
 
 
-def update_map(file, map, a, alpha=0):
+def rotate_polygons(polygons, alpha, start, end, width, height, a):
+    start_end = [start[0], start[1], end[0], end[1]]
+    center = [height // 2, width // 2]
+    rotated_polygons, start, end = rotate_polygons_around_center(polygons, start_end, center, alpha)
+    draw_start_pixel = tuple(start)
+    draw_end_pixel = tuple(end)
+    hex_start = pixel_to_flat_hex(start[0], start[1], a)
+    hex_end = pixel_to_flat_hex(end[0], end[1], a)
+    rotated_polygons = rotated_polygons[:-1]
+    return rotated_polygons, hex_start, hex_end
+
+
+def update_map(file, map, a, start, end, width, height, alpha=0):
     polygons = read_polygons_from(file)
     polygons = scale_polygons_coords_up_left_corner(polygons, scale_up_left_corner, scale_up_left_corner)
     if alpha:
-        width, height = get_image_size_by_polygons(polygons, a)
-        if USE_FIXED_SIZES:
-            width, height = 640, 480
-        start = (scale_up_left_corner, scale_up_left_corner)
-        end = (width - 1 + scale_up_left_corner, height - 1 + scale_up_left_corner)
-        start_end = [start[0], start[1], end[0], end[1]]
-        center = [height // 2, width // 2]
-        rotated_polygons, start, end = rotate_polygons_around_center(polygons, start_end, center, alpha)
-        draw_start_pixel = tuple(start)
-        draw_end_pixel = tuple(end)
-        new_width, new_height = get_image_size_by_polygons(rotated_polygons, a)
-        rotated_polygons = rotated_polygons[:-1]
-        polygons = rotated_polygons
-        height, width = 1000, 1000
+        polygons, _, _ = rotate_polygons(polygons, alpha, start, end, width, height, a)
     hex_polygons, map = from_pixel_to_hex_polygons(polygons, map, a)
     map = raster_hex_polygons(hex_polygons, map, a)
     return map
@@ -411,7 +411,7 @@ def scale_coords(old_range_x, old_range_y, new_range_x, new_range_y, point):
             (y_old - y_mid_old) * k_y + y_mid_new]
 
 
-def create_broadcasts_from_folder(path, save_path):
+def create_broadcasts_from_folder(path, save_path, width, height):
     c_count = 0
     p_count = 0
     b_count = 1
@@ -434,7 +434,9 @@ def create_broadcasts_from_folder(path, save_path):
                     polygon = []
                     for point_line in points[p_count:p_count + points_num]:
                         x, y = list(map(float, point_line.strip().split(',')))
-                        x, y = scale_coords([25, 60], [-80.5, -9.5], [10, 630], [10, 470], [x, y])
+                        # y = - y
+                        # x, y = scale_coords([25, 60], [9.5, 80.5], [10, width - 10], [10, height - 10], [x, y])
+                        x, y = scale_coords([25, 60], [-80.5, -9.5], [10, width - 10], [10, height - 10], [x, y])
                         polygon.append(x)
                         polygon.append(y)
                         if x > max_x:
@@ -455,15 +457,15 @@ def create_broadcasts_from_folder(path, save_path):
     print(f"max_x={max_x}, min_x={min_x}, max_y={max_y}, min_y={min_y}")
 
 
-a = 20
+# a = 20
 # scaling in pixels
-scale_up_left_corner = 0
-scale_down_right_corner = 0
-distance = 20
+scale_up_left_corner = 200
+scale_down_right_corner = 200
+distance = 10
 CLOUDS = False
 SHOW_POLYGONS = False
-USE_FIXED_SIZES = True
-SHOW_SQUARE_AND_HEX_RASTER = False
+USE_FIXED_SIZES = False
+SHOW_SQUARE_AND_HEX_RASTER = True
 polygons_file = 'polygons.txt'
 
 doubleheight_directions = {
