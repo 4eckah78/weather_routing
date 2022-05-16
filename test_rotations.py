@@ -4,7 +4,8 @@ from mpl_toolkits import mplot3d
 import time
 
 
-def experiment(a_list, alpha_list, SHOW=False, opt=False, broadcasts_path="txt/", static_constraints_path="polygons.txt"):
+def experiment(a_list, alpha_list, SHOW=False, show_dynamic=False, opt=False, broadcasts_path="txt/",
+               static_constraints_path="polygons.txt"):
     result = np.zeros((len(a_list), len(alpha_list)))
     for i, a in enumerate(a_list):
         print(f"a = {a}")
@@ -16,14 +17,14 @@ def experiment(a_list, alpha_list, SHOW=False, opt=False, broadcasts_path="txt/"
             else:
                 polygons = read_polygons_from(static_constraints_path)
 
-            polygons = scale_polygons_coords_up_left_corner(polygons, scale_up_left_corner, scale_up_left_corner)
-
             pixel_width, pixel_height = get_image_size_by_polygons(polygons, a)
             if USE_FIXED_SIZES:
-                width, height = 640, 480
+                pixel_width, pixel_height = 640, 480
 
             pixel_start = (0 + scale_up_left_corner, 0 + scale_up_left_corner)
-            pixel_end = (pixel_width - 1, pixel_height - 1)
+            pixel_end = (pixel_width - 1 + scale_up_left_corner, pixel_height - 1 + scale_up_left_corner)
+
+            polygons = scale_polygons_coords_up_left_corner(polygons, scale_up_left_corner, scale_up_left_corner)
 
             # turn to 30 degree (optimal)
             if opt:
@@ -44,7 +45,7 @@ def experiment(a_list, alpha_list, SHOW=False, opt=False, broadcasts_path="txt/"
             #         show_polygons(rotated_polygons, new_width, new_height)
             #
             #     polygons = rotated_polygons
-            width, height = pixel_width, pixel_height
+            width, height = get_image_size_by_polygons(polygons, a)
             # print(f"height={height}, width={width}")
 
             hex_width = math.ceil((width + scale_down_right_corner) / (3 * a))
@@ -70,21 +71,26 @@ def experiment(a_list, alpha_list, SHOW=False, opt=False, broadcasts_path="txt/"
             finished = False
             colour = 0
             broadcast = 1
-            draw_hex_image([start, end], "red", width, height, hex_width, hex_height, static_hex_map, a, polygons=polygons
-                           )#,save_to=f"./pictures_to_VKR/finding_path_with_dynamic_constraints_and_opt_angle_2/pic{step}.png", show=False)
+            if SHOW:
+                draw_hex_image([start, end], "red", width, height, hex_width, hex_height, static_hex_map, a,
+                           polygons=polygons
+                           )  # ,save_to=f"./pictures_to_VKR/finding_path_with_dynamic_constraints_and_opt_angle_2/pic{step}.png", show=False)
             if alpha:
-                polygons, start, end  = rotate_polygons(polygons, alpha, pixel_start, pixel_end, pixel_width, pixel_height, a)
+                polygons, start, end = rotate_polygons(polygons, alpha, pixel_start, pixel_end, pixel_width,
+                                                       pixel_height, a)
                 static_hex_map = np.zeros((hex_height, hex_width), dtype=np.int32)
                 hex_polygons, static_hex_map = from_pixel_to_hex_polygons(polygons, static_hex_map, a)
                 static_hex_map = raster_hex_polygons(hex_polygons, static_hex_map, a)
-                draw_hex_image([start, end], "red", width, height, hex_width, hex_height, static_hex_map, a,
+                if SHOW:
+                    draw_hex_image([start, end], "red", width, height, hex_width, hex_height, static_hex_map, a,
                                polygons=polygons
-                               )#,save_to=f"./pictures_to_VKR/finding_path_with_dynamic_constraints_and_opt_angle_2/pic_rotated.png", show=False)
+                               )  # ,save_to=f"./pictures_to_VKR/finding_path_with_dynamic_constraints_and_opt_angle_2/pic_rotated.png", show=False)
 
             visited = [{start}]
             while not finished and iterations < max_iterations:
                 dynamic_hex_map = np.copy(static_hex_map)
-                dynamic_hex_map = update_map(f"{broadcasts_path}broadcast{broadcast}.txt", dynamic_hex_map, a, pixel_start, pixel_end, width, height, alpha=alpha)
+                dynamic_hex_map = update_map(f"{broadcasts_path}broadcast{broadcast}.txt", dynamic_hex_map, a,
+                                             pixel_start, pixel_end, width, height, alpha=alpha)
                 broadcast += 1
                 # draw_hex_image([start, end], "red", width, height, hex_width, hex_height, dynamic_hex_map, a)
                 bg = time.time()
@@ -92,8 +98,17 @@ def experiment(a_list, alpha_list, SHOW=False, opt=False, broadcasts_path="txt/"
                 if finished:
                     paths = move_back(visited, end, dynamic_hex_map)
                     to_color = set.union(*paths)
-                    # path_to_ship = get_paths(paths, dynamic_hex_map)
                     if SHOW:
+                        draw_hex_image(to_color, "red", width, height, hex_width, hex_height,
+                                   dynamic_hex_map,
+                                   a)
+                    one_path = get_one_path(paths, start, dynamic_hex_map)
+                    if SHOW:
+                        draw_hex_image(one_path, "red", width, height, hex_width, hex_height,
+                                       dynamic_hex_map,
+                                       a)
+                    if show_dynamic:
+                        paths = [{hex} for hex in one_path[::-1]]
                         broadcast = 1
                         to_color = set([start])
                         paths.pop()
@@ -109,12 +124,12 @@ def experiment(a_list, alpha_list, SHOW=False, opt=False, broadcasts_path="txt/"
                             to_color.add(end)
                             draw_hex_image(to_color, "red", width, height, hex_width, hex_height,
                                            dynamic_hex_map,
-                                           a)#,save_to=f"./pictures_to_VKR/finding_path_with_dynamic_constraints_and_opt_angle_2/pic{step}.png", show=False)
+                                           a)  # ,save_to=f"./pictures_to_VKR/finding_path_with_dynamic_constraints_and_opt_angle_2/pic{step}.png", show=False)
                             new_layer = set.union(*layer)
                             to_color = set.union(to_color, new_layer)
                             draw_hex_image(to_color, "red", width, height, hex_width, hex_height,
                                            dynamic_hex_map,
-                                           a)#, save_to=f"./pictures_to_VKR/finding_path_with_dynamic_constraints_and_opt_angle_2/pic{step + 1}.png", show=False)
+                                           a)  # , save_to=f"./pictures_to_VKR/finding_path_with_dynamic_constraints_and_opt_angle_2/pic{step + 1}.png", show=False)
                         # draw_hex_image(to_color, "red", width, height, hex_width, hex_height,
                         #                dynamic_hex_map,
                         #                a)#, draw_start_end_pixels=[draw_start_pixel,

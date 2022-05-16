@@ -232,7 +232,7 @@ def fill_pol(lines, map):
 
 def get_lines_to_fill_pol(hex_pol, min_max_col, a):
     min_c, max_c = min_max_col
-    lines = {doubleheight_to_pixel(0, c, a)[0]: [] for c in range(min_c, max_c + 1)}
+    lines = {c: [] for c in range(min_c, max_c + 1)}
     for edge_id in range(len(hex_pol) - 1):
         x1, y1 = doubleheight_to_pixel(*hex_pol[edge_id], a)
         x2, y2 = doubleheight_to_pixel(*hex_pol[edge_id + 1], a)
@@ -244,15 +244,19 @@ def get_lines_to_fill_pol(hex_pol, min_max_col, a):
             x, y = x1, y1
             dy = (y2 - y1) / (x2 - x1)
 
-            while x < x2:
+            last_col = pixel_to_flat_hex(x2, y2, a)[1]
+
+            row, col = pixel_to_flat_hex(x, y, a)
+            while col < last_col:
                 x += 1.5 * a
                 y += dy * 1.5 * a
-                lines[x].append(y)
+                row, col = pixel_to_flat_hex(x, y, a)
+                lines[col].append((row, col))
 
     for k, v in lines.items():
         lines[k] = sorted(lines[k])
-    hex_lines = {x: [pixel_to_flat_hex(x, y, a) for y in ys] for x, ys in lines.items()}
-    return hex_lines
+
+    return lines
 
 
 def raster_hex_polygons(hex_pols, map, a):
@@ -307,10 +311,8 @@ def draw_hex_image(need_to_draw, colour, width, height, hex_width, hex_height, d
 
 def move(visited, dynamic_hex_map, end):
     for _ in range(distance):
-        to_check = copy.copy(visited[-1])
         new_visited = set()
-        while to_check:
-            row, col = to_check.pop()
+        for row, col in visited[-1]:
             if dynamic_hex_map[row, col // 2] != 1:
                 new_visited.add((row, col))
             for row1, col1 in get_all_neighbors(row, col, dynamic_hex_map):
@@ -331,6 +333,18 @@ def move_back(visited, end, dynamic_hex_map):
             next_layer = next_layer.union(set.intersection(neighbors, curr_layer))
         paths.append(next_layer)
     return paths
+
+
+def get_one_path(paths, start, map):
+    path = [start]
+    for layer in paths[-2::-1]:
+        row, col = path[-1]
+        neighbors = get_all_neighbors(row, col, map)
+        for r, c in neighbors:
+            if (r, c) in layer:
+                path.append((r, c))
+                break
+    return path
 
 
 def scale_polygons_coords_up_left_corner(pols, scale_x, scale_y):
