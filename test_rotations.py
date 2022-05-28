@@ -25,6 +25,22 @@ def experiment(a_list, alpha_list, SHOW=False, show_dynamic=False, opt=False, br
 
             pixel_start = (0 + scale_up_left_corner, 0 + scale_up_left_corner)
             pixel_end = (pixel_width - 1 + scale_up_left_corner, pixel_height - 1 + scale_up_left_corner)
+            length = np.sqrt((pixel_end[0]-pixel_start[0])**2 + (pixel_end[1]-pixel_start[1])**2)
+            print(f"distance = {length}")
+
+            draw_start_pixel = tuple(pixel_start)
+            draw_end_pixel = tuple(pixel_end)
+            # put start in the center of hex
+            if start_in_cntr:
+                start = pixel_to_flat_hex(pixel_start[0], pixel_start[1], a)
+                new_pixel_start = doubleheight_to_pixel(*start, a)
+                scale_x, scale_y = new_pixel_start[0] - pixel_start[0], new_pixel_start[1] - pixel_start[1]
+                new_pixel_end = pixel_end[0] + scale_x, pixel_end[1] + scale_y
+                pixel_start, pixel_end = new_pixel_start, new_pixel_end
+                polygons = scale_polygons_coords_up_left_corner(polygons, scale_x, scale_y)
+                draw_start_pixel = tuple(pixel_start)
+                draw_end_pixel = tuple(pixel_end)
+
 
             polygons = scale_polygons_coords_up_left_corner(polygons, scale_up_left_corner, scale_up_left_corner)
 
