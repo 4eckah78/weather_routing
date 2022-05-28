@@ -99,8 +99,8 @@ def experiment(a_list, alpha_list, SHOW=False, show_dynamic=False, opt=False, br
                                , save_to=f"{save_to}/pic{pics}.png", show=False)
                 pics += 1
             if alpha:
-                polygons, start, end = rotate_polygons(polygons, alpha, pixel_start, pixel_end, pixel_width,
-                                                       pixel_height, a)
+                polygons, start, end = rotate_polygons_start_end(polygons, alpha, pixel_start, pixel_end, pixel_width,
+                                                                 pixel_height, a)
                 static_hex_map = np.zeros((hex_height, hex_width), dtype=np.int32)
                 hex_polygons, static_hex_map = from_pixel_to_hex_polygons(polygons, static_hex_map, a)
                 static_hex_map = raster_hex_polygons(hex_polygons, static_hex_map, a)
