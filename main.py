@@ -2,10 +2,9 @@ import numpy as np
 import PIL.ImageDraw as ImageDraw
 import PIL.Image as Image
 import math
-import copy
 
 
-def generate_polygon(x0, y0, r_range, n_range):
+def generate_polygon(x0, y0, r_range, n_range, width, height):
     r = np.random.randint(r_range[0], r_range[1])
     pi = np.pi
     a = 2 * pi / n_range[1]
@@ -30,17 +29,17 @@ def generate_polygon(x0, y0, r_range, n_range):
     return np.asarray(x), np.asarray(y)
 
 
-def generate_N_polygons(N, r_range, sides_range, show=False, save_to=None):
+def generate_n_polygons(n, r_range, sides_range, width, height, show=False, save_to=None):
     # np.random.seed(1)
     sides_range[1] += 2
     image = Image.new("1", (width, height), color=0)
     draw = ImageDraw.Draw(image)
 
     pols = []
-    for _ in range(N):
+    for _ in range(n):
         x0 = int(np.random.rand() * width)
         y0 = int(np.random.rand() * height)
-        x, y = generate_polygon(x0, y0, r_range, sides_range)
+        x, y = generate_polygon(x0, y0, r_range, sides_range, width, height)
         points = list(zip(x, y))
         draw.polygon((points), fill=1)
         points = ",".join([str(x) + "," + str(y) for x, y in zip(x, y)])
@@ -203,7 +202,7 @@ def v_biased_lines(start, end, double_dx, dy, min_max_col, map):
     return map
 
 
-def get_image_size_by_polygons(pols, a):
+def get_image_size_by_polygons(pols):
     width, height = 0, 0
     for pol in pols:
         w, h = max(pol[::2]), max(pol[1::2])
@@ -211,7 +210,7 @@ def get_image_size_by_polygons(pols, a):
             width = w
         if h > height:
             height = h
-    return int(width + 2 * a), int(height + 2 * a)
+    return int(width), int(height)
 
 
 def fill_line(up_hex, down_hex, map):
@@ -269,7 +268,7 @@ def raster_hex_polygons(hex_pols, map, a):
     return map
 
 
-def draw_hex_image(need_to_draw, colour, width, height, hex_width, hex_height, dynamic_hex_map, a,
+def draw_hex_image(need_to_draw, colour, width, height, hex_width, hex_height, map, a,
                    draw_start_end_pixels=None, polygons=None, save_to=None, show=True):
     image = Image.new("RGB", (width + scale_down_right_corner, height + scale_down_right_corner), color=(255, 255, 255))
     draw = ImageDraw.Draw(image)
@@ -282,7 +281,7 @@ def draw_hex_image(need_to_draw, colour, width, height, hex_width, hex_height, d
             y0 = j * np.sqrt(3) * a / 2
             row, col = pixel_to_flat_hex(x0, y0, a)
             color = (255, 255, 255)
-            num = dynamic_hex_map[row, col // 2]
+            num = map[row, col // 2]
             if num == 1:
                 color = (0, 0, 0)
             if (row, col) in need_to_draw:
@@ -292,17 +291,17 @@ def draw_hex_image(need_to_draw, colour, width, height, hex_width, hex_height, d
             draw.regular_polygon((x0, y0, a), 6, fill=color, outline=(0, 0, 0))
     if draw_start_end_pixels:
         start, end = draw_start_end_pixels
-        r = 3
+        r = 5
         draw.ellipse([start[0] - r, start[1] - r, start[0] + r, start[1] + r], fill="green")
-        draw.ellipse([end[0] - r, end[1] - r, end[0] + r, end[1] + r], fill="pink")
-        draw.line(draw_start_end_pixels, fill="yellow", width=2)
+        draw.ellipse([end[0] - r, end[1] - r, end[0] + r, end[1] + r], fill="black")
+        draw.line(draw_start_end_pixels, fill="black", width=3)
 
     if SHOW_SQUARE_AND_HEX_RASTER:
         if not polygons:
             print("No polygons in draw_hex_image arguments!")
         else:
             for pol in polygons:
-                draw.polygon((pol), outline=(255, 0, 0))
+                draw.polygon((pol), outline=(255, 0, 0), width=2)
     if show:
         image.show()
     if save_to:
@@ -387,7 +386,7 @@ def rotate_pixel_around_center(point, center, alpha):
     return round(x1), round(y1)
 
 
-def rotate_polygons(polygons, alpha, start, end, width, height, a):
+def rotate_polygons_start_end(polygons, alpha, start, end, width, height, a):
     start_end = [start[0], start[1], end[0], end[1]]
     center = [height // 2, width // 2]
     rotated_polygons, start, end = rotate_polygons_around_center(polygons, start_end, center, alpha)
@@ -403,7 +402,7 @@ def update_map(file, map, a, start, end, width, height, alpha=0):
     polygons = read_polygons_from(file)
     polygons = scale_polygons_coords_up_left_corner(polygons, scale_up_left_corner, scale_up_left_corner)
     if alpha:
-        polygons, _, _ = rotate_polygons(polygons, alpha, start, end, width, height, a)
+        polygons, _, _ = rotate_polygons_start_end(polygons, alpha, start, end, width, height, a)
     hex_polygons, map = from_pixel_to_hex_polygons(polygons, map, a)
     map = raster_hex_polygons(hex_polygons, map, a)
     return map

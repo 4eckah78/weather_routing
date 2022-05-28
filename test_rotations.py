@@ -4,9 +4,10 @@ from mpl_toolkits import mplot3d
 import time
 
 
-def experiment(a_list, alpha_list, SHOW=False, show_dynamic=False, opt=False, broadcasts_path="txt/",
-               static_constraints_path="polygons.txt"):
+def experiment(a_list, alpha_list, SHOW=False, show_dynamic=False, opt=False, broadcasts_path=None,
+               static_constraints_path="polygons.txt", save_to=None, start_in_cntr=False):
     result = np.zeros((len(a_list), len(alpha_list)))
+    pics = 0
     for i, a in enumerate(a_list):
         print(f"a = {a}")
         for j, alpha in enumerate(alpha_list):
@@ -17,7 +18,8 @@ def experiment(a_list, alpha_list, SHOW=False, show_dynamic=False, opt=False, br
             else:
                 polygons = read_polygons_from(static_constraints_path)
 
-            pixel_width, pixel_height = get_image_size_by_polygons(polygons, a)
+            pixel_width, pixel_height = get_image_size_by_polygons(polygons)
+            pixel_width, pixel_height = pixel_width + int(2*71), pixel_height + int(2*71)
             if USE_FIXED_SIZES:
                 pixel_width, pixel_height = 640, 480
 
@@ -45,13 +47,16 @@ def experiment(a_list, alpha_list, SHOW=False, show_dynamic=False, opt=False, br
             #         show_polygons(rotated_polygons, new_width, new_height)
             #
             #     polygons = rotated_polygons
-            width, height = get_image_size_by_polygons(polygons, a)
+            width, height = get_image_size_by_polygons(polygons)
+            width, height = width + int(2*71), height + int(2*71)
+            if USE_FIXED_SIZES:
+                width, height = 750, 590
             # print(f"height={height}, width={width}")
 
             hex_width = math.ceil((width + scale_down_right_corner) / (3 * a))
             hex_height = math.ceil((height + scale_down_right_corner) / (np.sqrt(3) * a) * 2) + 1
-            print(f"hex width x height: {hex_width}x{hex_height}")
-            print(f"pixel width x height: {width}x{height}")
+            # print(f"hex width x height: {hex_width}x{hex_height}")
+            # print(f"width x height: {width}x{height}")
             static_hex_map = np.zeros((hex_height, hex_width), dtype=np.int32)
             # draw = pixel_to_flat_hex(polygons[0][0], polygons[0][1], a)
             # draw_hex_image([draw], "red", width, height, hex_width, hex_height, static_hex_map, a,
@@ -72,9 +77,11 @@ def experiment(a_list, alpha_list, SHOW=False, show_dynamic=False, opt=False, br
             colour = 0
             broadcast = 1
             if SHOW:
-                draw_hex_image([start, end], "red", width, height, hex_width, hex_height, static_hex_map, a,
-                           polygons=polygons
-                           )  # ,save_to=f"./pictures_to_VKR/finding_path_with_dynamic_constraints_and_opt_angle_2/pic{step}.png", show=False)
+                draw_hex_image([start, end], "red", width, height, hex_width, hex_height, static_hex_map, a, polygons=polygons)
+            if save_to:
+                draw_hex_image([start, end], "red", width, height, hex_width, hex_height, static_hex_map, a
+                               , save_to=f"{save_to}/pic{pics}.png", show=False)
+                pics += 1
             if alpha:
                 polygons, start, end = rotate_polygons(polygons, alpha, pixel_start, pixel_end, pixel_width,
                                                        pixel_height, a)
@@ -82,15 +89,25 @@ def experiment(a_list, alpha_list, SHOW=False, show_dynamic=False, opt=False, br
                 hex_polygons, static_hex_map = from_pixel_to_hex_polygons(polygons, static_hex_map, a)
                 static_hex_map = raster_hex_polygons(hex_polygons, static_hex_map, a)
                 if SHOW:
-                    draw_hex_image([start, end], "red", width, height, hex_width, hex_height, static_hex_map, a,
-                               polygons=polygons
-                               )  # ,save_to=f"./pictures_to_VKR/finding_path_with_dynamic_constraints_and_opt_angle_2/pic_rotated.png", show=False)
+                    draw_hex_image([start, end], "red", width, height, hex_width, hex_height, static_hex_map, a)
+                if save_to:
+                    draw_hex_image([start, end], "red", width, height, hex_width, hex_height, static_hex_map, a
+                                   , save_to=f"{save_to}/pic{pics}.png", show=False)
+                    pics += 1
 
             visited = [{start}]
             while not finished and iterations < max_iterations:
                 dynamic_hex_map = np.copy(static_hex_map)
-                dynamic_hex_map = update_map(f"{broadcasts_path}broadcast{broadcast}.txt", dynamic_hex_map, a,
-                                             pixel_start, pixel_end, width, height, alpha=alpha)
+                if broadcasts_path:
+                    try:
+                        dynamic_hex_map = update_map(f"{broadcasts_path}broadcast{broadcast}.txt", dynamic_hex_map, a,
+                                                 pixel_start, pixel_end, width, height, alpha=alpha)
+                    except FileNotFoundError as e:
+                        print(f"[ERROR] missing forecast files!!!")
+                        draw_hex_image([start, end], "red", width, height, hex_width, hex_height, dynamic_hex_map, a)
+                        stats.append(0)
+                        real_distance.append(0)
+                        break
                 broadcast += 1
                 # draw_hex_image([start, end], "red", width, height, hex_width, hex_height, dynamic_hex_map, a)
                 bg = time.time()
@@ -100,13 +117,20 @@ def experiment(a_list, alpha_list, SHOW=False, show_dynamic=False, opt=False, br
                     to_color = set.union(*paths)
                     if SHOW:
                         draw_hex_image(to_color, "red", width, height, hex_width, hex_height,
-                                   dynamic_hex_map,
-                                   a)
-                    one_path = get_one_path(paths, start, dynamic_hex_map)
-                    if SHOW:
-                        draw_hex_image(one_path, "red", width, height, hex_width, hex_height,
                                        dynamic_hex_map,
-                                       a)
+                                       a, draw_start_end_pixels=[draw_start_pixel, draw_end_pixel])
+                    if save_to:
+                        draw_hex_image(to_color, "red", width, height, hex_width, hex_height, dynamic_hex_map, a
+                                       , save_to=f"{save_to}/pic{pics}.png", show=False)
+                        pics += 1
+                    one_path = get_one_path(paths, start, dynamic_hex_map)
+                    broadcast += 1
+                    if SHOW:
+                        draw_hex_image(one_path, "red", width, height, hex_width, hex_height, dynamic_hex_map, a)
+                    if save_to:
+                        draw_hex_image(one_path, "red", width, height, hex_width, hex_height, dynamic_hex_map, a
+                                       , save_to=f"{save_to}/pic{pics}.png", show=False)
+                        pics += 1
                     if show_dynamic:
                         paths = [{hex} for hex in one_path[::-1]]
                         broadcast = 1
@@ -117,23 +141,27 @@ def experiment(a_list, alpha_list, SHOW=False, show_dynamic=False, opt=False, br
                         for step in range(0, distance * t, distance):
                             layer = paths[step:step + distance]
                             dynamic_hex_map = np.copy(static_hex_map)
-                            dynamic_hex_map = update_map(f"{broadcasts_path}broadcast{broadcast}.txt", dynamic_hex_map,
-                                                         a, pixel_start, pixel_end, width, height, alpha=alpha)
+                            if broadcasts_path:
+                                dynamic_hex_map = update_map(f"{broadcasts_path}broadcast{broadcast}.txt",
+                                                             dynamic_hex_map,
+                                                             a, pixel_start, pixel_end, width, height, alpha=alpha)
 
                             broadcast += 1
                             to_color.add(end)
-                            draw_hex_image(to_color, "red", width, height, hex_width, hex_height,
-                                           dynamic_hex_map,
-                                           a)  # ,save_to=f"./pictures_to_VKR/finding_path_with_dynamic_constraints_and_opt_angle_2/pic{step}.png", show=False)
+                            draw_hex_image(to_color, "red", width, height, hex_width, hex_height, dynamic_hex_map, a,
+                                           show=SHOW)
+                            if save_to:
+                                draw_hex_image(to_color, "red", width, height, hex_width, hex_height,
+                                               dynamic_hex_map, a, save_to=f"{save_to}/pic{pics}.png", show=False)
+                                pics += 1
                             new_layer = set.union(*layer)
                             to_color = set.union(to_color, new_layer)
-                            draw_hex_image(to_color, "red", width, height, hex_width, hex_height,
-                                           dynamic_hex_map,
-                                           a)  # , save_to=f"./pictures_to_VKR/finding_path_with_dynamic_constraints_and_opt_angle_2/pic{step + 1}.png", show=False)
-                        # draw_hex_image(to_color, "red", width, height, hex_width, hex_height,
-                        #                dynamic_hex_map,
-                        #                a)#, draw_start_end_pixels=[draw_start_pixel,
-                        #                        draw_end_pixel]),  # save_to=f"experiments_with_rotating/experiment_{alpha}_degree_{a}_hex.png")
+                            draw_hex_image(to_color, "red", width, height, hex_width, hex_height, dynamic_hex_map, a,
+                                           show=SHOW)
+                            if save_to:
+                                draw_hex_image(to_color, "red", width, height, hex_width, hex_height,
+                                               dynamic_hex_map, a, save_to=f"{save_to}/pic{pics}.png", show=False)
+                                pics += 1
                     # print(f"optimal path's length in hexes = {len(paths) - 1}")
                     stats_hex.append(len(paths) - 1)
                     path_length_in_pixels = round((len(paths) - 1) * np.sqrt(3) * a)
